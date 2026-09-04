@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -42,6 +43,19 @@ class _LLMUnavailable(Exception):
     pass
 
 
+_tls = threading.local()
+
+
+def _thread_client(cfg: ProviderConfig):
+    """One OpenAI client per worker thread (shared sync httpx clients can
+    deadlock across threads with some httpx builds)."""
+    key = (cfg.base_url, cfg.api_key, cfg.model, cfg.timeout)
+    if getattr(_tls, "key", None) != key:
+        _tls.client = make_client(cfg)
+        _tls.key = key
+    return _tls.client
+
+
 def _parse_json(reply: str) -> dict:
     m = _JSON_BLOCK.search(reply)
     if not m:
@@ -54,9 +68,11 @@ def _parse_json(reply: str) -> dict:
     return obj
 
 
-def _judge_chunk(client, model: str, cid: str, prompt: str, chunk: Chunk,
-                 title: str | None, thinking: str | None = None) -> tuple[dict, dict]:
+def _judge_chunk(cfg: ProviderConfig, cid: str, prompt: str, chunk: Chunk,
+                 title: str | None) -> tuple[dict, dict]:
     """Judge one chunk for one category; returns (verdict, token_usage)."""
+    client = _thread_client(cfg)
+    model = cfg.model
     header = f"## Conversation title\n{title or '(none)'}\n\n"
     footer = "" if chunk.index == 0 else f"\n\n[chunk {chunk.index + 1} of ongoing conversation]"
     messages = [
@@ -64,8 +80,8 @@ def _judge_chunk(client, model: str, cid: str, prompt: str, chunk: Chunk,
         {"role": "user", "content": header + chunk.text + footer},
     ]
     extra: dict = {}
-    if thinking:
-        extra["thinking"] = {"level": thinking}
+    if cfg.thinking:
+        extra["thinking"] = {"level": cfg.thinking}
     last_err: Exception | None = None
     for attempt in range(1 + _PARSE_RETRY):
         try:
@@ -106,8 +122,6 @@ def analyze(state: SlspectorState, cfg: ProviderConfig) -> tuple[list[Finding], 
 
     findings: list[Finding] = []
     statuses: list[dict] = []
-    client = make_client(cfg)
-
     cats = taxonomy.llm_categories()
     eligible: list[str] = []
     for cid, cat in cats.items():
@@ -125,8 +139,8 @@ def analyze(state: SlspectorState, cfg: ProviderConfig) -> tuple[list[Finding], 
     t0 = time.monotonic()
     with ThreadPoolExecutor(max_workers=max(1, cfg.concurrency)) as pool:
         futures = {
-            pool.submit(_judge_chunk, client, cfg.model, cid, cats[cid]["llm"]["prompt"],
-                        chunk, title, cfg.thinking): cid
+            pool.submit(_judge_chunk, cfg, cid, cats[cid]["llm"]["prompt"],
+                        chunk, title): cid
             for cid, chunk in tasks
         }
         for fut in as_completed(futures):

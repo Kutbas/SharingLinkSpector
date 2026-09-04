@@ -76,19 +76,32 @@ def scan(
     n_records = 0
     n_findings = 0
     n_review = 0
+    usage_acc = {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0}
     cat_counter: Counter = Counter()
     plat_counter: Counter = Counter()
     t0 = time.monotonic()
 
+    usage_path = output / "llm_usage.jsonl" if use_llm else None
     with findings_path.open("w", encoding="utf-8") as ff, review_path.open(
         "w", encoding="utf-8"
-    ) as rf:
+    ) as rf, (usage_path.open("w", encoding="utf-8") if usage_path else open("/dev/null", "w")) as uf:
         for record in _iter_records(input_path, limit, offset):
             state = graph.invoke(
                 {"record": record, "use_llm": use_llm, "provider": cfg.name if cfg else None}
             )
             result = report(state)
             ff.write(json.dumps(result, ensure_ascii=False) + "\n")
+            if use_llm:
+                for st in state.get("analyzer_status") or []:
+                    if st.get("status") == "usage":
+                        for k in usage_acc:
+                            usage_acc[k] += st.get(k, 0)
+                uf.write(json.dumps({
+                    "share_id": result["share_id"],
+                    "finding_count": result["finding_count"],
+                    **next((st for st in state.get("analyzer_status") or []
+                            if st.get("status") == "usage"), {}),
+                }, ensure_ascii=False) + "\n")
             for f in result["findings"]:
                 cat_counter[f["taxonomy_id"]] += 1
             if result["needs_review_count"]:
@@ -97,14 +110,23 @@ def scan(
             n_findings += result["finding_count"]
             n_review += result["needs_review_count"]
             plat_counter[result["platform"]] += 1
-            if n_records % 10 == 0:
+            step = 1 if use_llm else 10
+            if n_records % step == 0:
+                extra = (f", llm {usage_acc['calls']} calls / "
+                         f"{usage_acc['prompt_tokens'] + usage_acc['completion_tokens']} tok"
+                         ) if use_llm else ""
                 console.print(
                     f"[dim]{n_records} records, {n_findings} findings, "
-                    f"{time.monotonic() - t0:.1f}s[/dim]"
+                    f"{time.monotonic() - t0:.1f}s{extra}[/dim]"
                 )
 
+    if usage_path:
+        usage_path.write_text((usage_path.read_text(encoding="utf-8") if usage_path.exists() else "") +
+                               json.dumps(usage_acc, ensure_ascii=False) + "\n", encoding="utf-8")
+
     _write_summary(output, n_records, n_findings, n_review, cat_counter, plat_counter,
-                   time.monotonic() - t0, cfg.model if cfg else None)
+                   time.monotonic() - t0, cfg.model if cfg else None,
+                   usage_acc if use_llm else None)
     console.print(
         f"[green]done[/green]: {n_records} records -> {n_findings} findings "
         f"({n_review} needs_review) in {time.monotonic() - t0:.1f}s\n"
@@ -113,19 +135,20 @@ def scan(
 
 
 def _write_summary(out: Path, n_records, n_findings, n_review, cat_counter, plat_counter,
-                   elapsed, model):
+                   elapsed, model, usage=None):
     lines = [
         "# SharingLinkSpector Scan Summary",
         "",
         f"- records: {n_records} (platforms: {dict(plat_counter)})",
         f"- findings: {n_findings}, needs_review: {n_review}",
         f"- elapsed: {elapsed:.1f}s" + (f", LLM: {model}" if model else ", static-only"),
-        "",
-        "## Hits by category",
-        "",
-        "| ID | Category | hits |",
-        "|----|----------|------|",
     ]
+    if usage:
+        lines.append(
+            f"- LLM usage: {usage['calls']} calls, "
+            f"{usage['prompt_tokens']} in / {usage['completion_tokens']} out tokens"
+        )
+    lines += ["", "## Hits by category", "", "| ID | Category | hits |", "|----|----------|------|"]
     for cid, n in cat_counter.most_common():
         cat = taxonomy.get(cid) or {}
         lines.append(f"| {cid} | {cat.get('leaf_en', '')} | {n} |")
