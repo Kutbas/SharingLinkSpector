@@ -1,0 +1,43 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "slspector"
+version = "0.1.0"
+description = "SharingLinkSpector: 静态+LLM 双轨的 AI 对话分享链接隐私与安全风险标注工具（taxonomy-0901-v5, 49 类）"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Proprietary" }
+dependencies = [
+    "langgraph>=1.0",
+    "typer>=0.14",
+    "rich>=13.0",
+    "pydantic>=2.8",
+    "openai>=1.60",
+    "pyyaml>=6.0",
+    "regex>=2024.11",
+]
+
+[project.optional-dependencies]
+export = ["openpyxl>=3.1"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.8",
+]
+
+[project.scripts]
+slspector = "slspector.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/slspector"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["tests"]
