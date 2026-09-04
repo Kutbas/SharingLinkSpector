@@ -8,6 +8,10 @@ Per category: judge each chunk independently, then merge results across chunks
 (best confidence kept, multi-chunk corroboration boosts confidence slightly).
 Categories already hit by the static track at confidence >= 0.7 are skipped to
 save tokens (dedup with static findings happens in meta_analyzer).
+
+All (category, chunk) judging calls run in a thread pool bounded by
+ProviderConfig.concurrency. Token usage is accumulated and reported in the
+analyzer status for cost accounting.
 """
 
 from __future__ import annotations
@@ -15,6 +19,7 @@ from __future__ import annotations
 import json
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from slspector import taxonomy
 from slspector.chunking import Chunk, chunk_conversation, chunk_limits
@@ -50,13 +55,17 @@ def _parse_json(reply: str) -> dict:
 
 
 def _judge_chunk(client, model: str, cid: str, prompt: str, chunk: Chunk,
-                 title: str | None) -> dict:
+                 title: str | None, thinking: str | None = None) -> tuple[dict, dict]:
+    """Judge one chunk for one category; returns (verdict, token_usage)."""
     header = f"## Conversation title\n{title or '(none)'}\n\n"
     footer = "" if chunk.index == 0 else f"\n\n[chunk {chunk.index + 1} of ongoing conversation]"
     messages = [
         {"role": "system", "content": prompt},
         {"role": "user", "content": header + chunk.text + footer},
     ]
+    extra: dict = {}
+    if thinking:
+        extra["thinking"] = {"level": thinking}
     last_err: Exception | None = None
     for attempt in range(1 + _PARSE_RETRY):
         try:
@@ -65,8 +74,14 @@ def _judge_chunk(client, model: str, cid: str, prompt: str, chunk: Chunk,
                 messages=messages,
                 temperature=0.1,
                 response_format={"type": "json_object"},
+                extra_body=extra or None,
             )
-            return _parse_json(resp.choices[0].message.content or "")
+            result = _parse_json(resp.choices[0].message.content or "")
+            usage = {
+                "prompt_tokens": getattr(getattr(resp, "usage", None), "prompt_tokens", 0) or 0,
+                "completion_tokens": getattr(getattr(resp, "usage", None), "completion_tokens", 0) or 0,
+            }
+            return result, usage
         except Exception as exc:  # noqa: BLE001
             last_err = exc
             time.sleep(1.5 * (attempt + 1))
@@ -93,27 +108,47 @@ def analyze(state: SlspectorState, cfg: ProviderConfig) -> tuple[list[Finding], 
     statuses: list[dict] = []
     client = make_client(cfg)
 
-    for cid, cat in taxonomy.llm_categories().items():
+    cats = taxonomy.llm_categories()
+    eligible: list[str] = []
+    for cid, cat in cats.items():
         if static_hits.get(cid, 0.0) >= STATIC_HIT_SKIP_CONF:
             statuses.append({"analyzer_id": ANALYZER_ID, "category": cid,
                              "status": "skipped_static_hit"})
-            continue
-        t0 = time.monotonic()
-        per_chunk: list[dict] = []
-        err: str | None = None
-        for chunk in chunks:
-            try:
-                result = _judge_chunk(client, cfg.model, cid, cat["llm"]["prompt"], chunk, title)
-            except _LLMUnavailable as exc:
-                err = str(exc)[:200]
-                break
-            if result.get("hit"):
-                per_chunk.append(result)
-        if err:
-            statuses.append({"analyzer_id": ANALYZER_ID, "category": cid,
-                             "status": "error", "detail": err})
-            continue
+        else:
+            eligible.append(cid)
 
+    # judge all (category, chunk) pairs concurrently
+    tasks = [(cid, chunk) for cid in eligible for chunk in chunks]
+    per_cat: dict[str, list[dict]] = {}
+    errors: dict[str, str] = {}
+    usage_total = {"prompt_tokens": 0, "completion_tokens": 0, "calls": 0}
+    t0 = time.monotonic()
+    with ThreadPoolExecutor(max_workers=max(1, cfg.concurrency)) as pool:
+        futures = {
+            pool.submit(_judge_chunk, client, cfg.model, cid, cats[cid]["llm"]["prompt"],
+                        chunk, title, cfg.thinking): cid
+            for cid, chunk in tasks
+        }
+        for fut in as_completed(futures):
+            cid = futures[fut]
+            try:
+                result, usage = fut.result()
+            except _LLMUnavailable as exc:
+                errors[cid] = str(exc)[:200]
+                continue
+            usage_total["prompt_tokens"] += usage["prompt_tokens"]
+            usage_total["completion_tokens"] += usage["completion_tokens"]
+            usage_total["calls"] += 1
+            if result.get("hit"):
+                per_cat.setdefault(cid, []).append(result)
+
+    for cid in eligible:
+        if cid in errors:
+            statuses.append({"analyzer_id": ANALYZER_ID, "category": cid,
+                             "status": "error", "detail": errors[cid]})
+            continue
+        cat = cats[cid]
+        per_chunk = per_cat.get(cid, [])
         if per_chunk:
             best = max(per_chunk, key=lambda r: float(r["confidence"]))
             conf = max(0.1, min(1.0, float(best["confidence"])))
@@ -142,8 +177,14 @@ def analyze(state: SlspectorState, cfg: ProviderConfig) -> tuple[list[Finding], 
         statuses.append({
             "analyzer_id": ANALYZER_ID, "category": cid, "status": "ok",
             "hit": bool(per_chunk), "chunks": len(chunks),
-            "duration_ms": int((time.monotonic() - t0) * 1000),
         })
+    statuses.append({
+        "analyzer_id": ANALYZER_ID, "status": "usage",
+        "detail": f"{usage_total['calls']} calls, "
+                  f"{usage_total['prompt_tokens']} in / {usage_total['completion_tokens']} out tokens, "
+                  f"{time.monotonic() - t0:.1f}s",
+        **usage_total,
+    })
     return findings, statuses
 
 

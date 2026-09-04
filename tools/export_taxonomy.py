@@ -8,7 +8,7 @@ Produces the single source of truth consumed by slspector at runtime:
 - kevin_note: verbatim I-column "verdict rationale (red-flagged items)"
 - llm.prompt: English judging prompts for Phase 1 LLM categories
 
-Re-run:  uv run --group export python tools/export_taxonomy.py
+Re-run:  uv run --extra export python tools/export_taxonomy.py
 """
 
 from __future__ import annotations
@@ -92,10 +92,93 @@ RED_FLAG_DISPOSITION = {
     "B-CIA-6": {"status": "candidate", "reason": "Template meta-syntax candidates, high FP rate -> manual review"},
 }
 
-# Phase 1 LLM prompt coverage (red-flag related + A-C series + high-value injection)
-LLM_PHASE1 = {
+# LLM prompt coverage: all H-column 【LLM】-marked categories minus ruled-out ones.
+# 44 marked - 4 excluded = 40 prompts (11 from Phase 1 + 29 new in Phase 2).
+LLM_EXCLUDED = {
+    # cid: reason (documented in coverage; no prompt generated)
+    "B-C-3": "distillation attack itself not observable by third parties; Kevin's I-column verdict: skipped",
+    "B-A-1": "creation-side rate data not available to third parties; Kevin's I-column verdict: skipped",
+    "B-IA-3": "corpus-level clustering capability (batch layer), out of scope for per-record detection",
+    "B-IA-5": "H column explicitly marks LLM as not applicable (structural static detection suffices)",
+}
+
+LLM_COVERAGE = {
     "A-C-1", "A-C-2", "A-C-3", "A-C-4", "A-C-5", "A-C-6",
     "A-I-1", "B-CIA-1", "B-CI-8", "B-IA-1", "B-IA-2",
+    # Phase 2 additions
+    "B-C-1", "B-C-2", "B-C-4", "B-C-5", "B-C-6",
+    "B-I-1", "B-I-2", "B-I-3", "B-I-4", "B-I-7", "B-I-8", "B-I-9", "B-I-10",
+    "B-A-2", "B-A-3", "B-A-4",
+    "B-CI-2", "B-CI-3", "B-CI-4", "B-CI-5", "B-CI-7",
+    "B-IA-4",
+    "B-CIA-2", "B-CIA-3", "B-CIA-4", "B-CIA-5", "B-CIA-6", "B-CIA-8", "B-CIA-9",
+}
+assert len(LLM_COVERAGE) == 40, f"expected 40 LLM prompts, got {len(LLM_COVERAGE)}"
+
+# Per-class extra guidance appended to the generic prompt template.
+# English-only (codebase convention); used where content-only judging has a
+# known limitation the model must be told about explicitly.
+EXTRA_GUIDANCE = {
+    "B-I-8": (
+        "## Known limitation\n"
+        "You have NO retrieval/fact-checking capability. You CANNOT verify factual "
+        "truth. Judge ONLY the weaker content-side signal: the density of high-specificity "
+        "assertions made without any source, citation, or hedge. This is a weak signal: "
+        "cap confidence at 0.6 and state in reasoning that factuality was not verified."
+    ),
+    "B-CI-7": (
+        "## Known limitation\n"
+        "You see TEXT ONLY; QR/barcode images are not visible to you. Judge ONLY when "
+        "the conversation text itself contains scan-bait phrasing (e.g. \"scan to "
+        "claim/log in\") or decoded QR target URLs; otherwise hit=false."
+    ),
+    "B-C-4": (
+        "## Judging scope\n"
+        "The attack triggers when the platform preview-fetches a URL. You judge the "
+        "content-side inducement: does the conversation embed URLs pointing at internal "
+        "targets (localhost, 127.0.0.1, 169.254.x, cloud metadata endpoints, intranet "
+        "hosts) that a preview bot would be tricked into fetching?"
+    ),
+    "B-I-4": (
+        "## Judging scope\n"
+        "The share-card metadata (title) is provided at the top of the conversation. "
+        "Judge semantic consistency between that title and the conversation body; "
+        "mismatch alone is a weak signal — cap confidence at 0.6 unless the title is "
+        "clearly baiting (clickbait/impersonation)."
+    ),
+    "B-A-2": (
+        "## Judging scope\n"
+        "Judge whether the content structure looks maliciously constructed to burn "
+        "rendering resources (deeply nested structures, pathological repetition, "
+        "combinatorial expansions) versus a legitimately long document."
+    ),
+    "B-A-3": (
+        "## Judging scope\n"
+        "Your role is CONFIRMATORY: distinguish legitimate encoded/compressed data "
+        "(data exchange, backups) from constructed ReDoS/decompression-bomb payloads. "
+        "When in doubt, hit=false (the static track already flags candidates)."
+    ),
+    "B-IA-4": (
+        "## Judging scope\n"
+        "Judge whether steganographic-looking payloads (base64/hex blobs, zero-width "
+        "runs) combine with ordinary conversation in a way consistent with C2 "
+        "command channels. Benign encoding use (data exchange) must not hit."
+    ),
+}
+
+# Status overrides for Phase 2 (LLM track now live for these classes)
+STATUS_OVERRIDES = {
+    "B-C-1": "implemented",   # was phase2_llm
+    "B-I-8": "implemented",   # was future_work; weak-signal prompt with limitation
+    "B-I-9": "implemented",   # was phase2_llm
+    "B-I-10": "implemented",  # was phase2_llm
+    "B-CI-7": "implemented",  # was future_work; text-only limited prompt
+}
+
+# Coverage notes for classes that stay out of the LLM track on capability grounds
+CAPABILITY_NOTES = {
+    "B-CI-1": "requires a multimodal provider (image content); text-only LLM track cannot judge",
+    "B-IA-3": "corpus-level clustering (batch layer over the full dataset), not per-record detection",
 }
 
 # Phase/track plan for non-red-flagged categories
@@ -139,10 +222,11 @@ def parse_tracks(h_text: str) -> list[str]:
 TRACK_EN = {"静态": "static", "LLM": "llm", "动态": "dynamic", "元数据": "metadata", "平台方": "platform"}
 
 
-def llm_prompt(definition: str, h_text: str, leaf_en: str) -> str:
+def llm_prompt(definition: str, h_text: str, leaf_en: str, cid: str = "") -> str:
     """English judging prompt; original Chinese definition kept verbatim for nuance."""
     m = re.search(r"【LLM[^】]*】([^；;]+)", h_text or "")
     llm_point = m.group(1).strip() if m else ""
+    extra = EXTRA_GUIDANCE.get(cid, "")
     return (
         "You are a security risk annotator for AI conversation sharing links. "
         f"Determine whether the conversation below exhibits the risk category "
@@ -151,7 +235,8 @@ def llm_prompt(definition: str, h_text: str, leaf_en: str) -> str:
         f"{definition}\n"
         "## Detection guidance (from taxonomy)\n"
         f"{llm_point}\n\n"
-        "## Judging requirements\n"
+        + (extra + "\n\n" if extra else "")
+        + "## Judging requirements\n"
         "1. Judge only from the conversation content itself; make no network requests.\n"
         "2. Distinguish a real risk from teaching/discussion/example contexts "
         "(discussing the risk is NOT exhibiting the risk).\n"
@@ -179,8 +264,8 @@ def main() -> None:
         definition = str(row["定义与症状"] or "")
         leaf = str(row["攻击手段 Technique（叶子）"] or "")
         disp = RED_FLAG_DISPOSITION.get(cid)
-        status = disp["status"] if disp else PLANNED.get(cid, "implemented")
-        note = disp["reason"] if disp else ""
+        status = STATUS_OVERRIDES.get(cid, disp["status"] if disp else PLANNED.get(cid, "implemented"))
+        note = disp["reason"] if disp else CAPABILITY_NOTES.get(cid, "")
         kevin_note = str(row["判定理由（红标项）"] or "") or None
         cat = {
             "id": cid,
@@ -196,11 +281,13 @@ def main() -> None:
             "note": note,
             "kevin_note": kevin_note,
         }
-        if cid in LLM_PHASE1:
+        if cid in LLM_COVERAGE:
             cat["llm"] = {
-                "prompt": llm_prompt(definition, h, LEAF_EN[cid]),
+                "prompt": llm_prompt(definition, h, LEAF_EN[cid], cid),
                 "needs_review": status == "candidate",
             }
+        elif cid in LLM_EXCLUDED:
+            cat["note"] = (note + "; " if note else "") + LLM_EXCLUDED[cid]
         categories.append(cat)
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
@@ -208,6 +295,8 @@ def main() -> None:
         "source": src.name,
         "sheet": "症状",
         "count": len(categories),
+        "llm_prompt_count": len(LLM_COVERAGE),
+        "llm_excluded": LLM_EXCLUDED,
         "exported_at": "2026-09-04",
         "status_legend": {
             "implemented": "detection implemented in Phase 1",

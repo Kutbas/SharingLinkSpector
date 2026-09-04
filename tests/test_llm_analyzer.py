@@ -12,14 +12,12 @@ from slspector.providers import ProviderConfig
 
 
 class _FakeCompletion:
-    class choices:
-        pass
-
     def __init__(self, content: str):
         obj = type("C", (), {})()
         obj.message = type("M", (), {})()
         obj.message.content = content
         self.choices = [obj]
+        self.usage = type("U", (), {"prompt_tokens": 100, "completion_tokens": 50})()
 
 
 class _FakeClient:

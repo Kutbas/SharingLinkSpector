@@ -31,6 +31,7 @@ class ProviderConfig:
     model: str
     timeout: float = 120.0
     concurrency: int = 4
+    thinking: str | None = "low"  # reasoning effort: low|high|max|None (=provider default)
 
 
 _PRESETS = {
@@ -41,6 +42,7 @@ _PRESETS = {
         model=os.environ.get("DMXAPI_MODEL", "glm-5.2"),
         timeout=float(os.environ.get("SLSPECTOR_LLM_TIMEOUT", "120")),
         concurrency=int(os.environ.get("SLSPECTOR_LLM_CONCURRENCY", "4")),
+        thinking=os.environ.get("SLSPECTOR_LLM_THINKING", "low") or None,
     ),
     "ollama": lambda: ProviderConfig(
         name="ollama",
