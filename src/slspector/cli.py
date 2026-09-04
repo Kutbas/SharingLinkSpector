@@ -1,6 +1,6 @@
-"""slspector CLI：scan / coverage。
+"""slspector CLI: scan / coverage.
 
-用法:
+Usage:
   slspector scan <input.jsonl> [--limit 20] [--no-llm] [--provider dmxapi] [-o out/]
   slspector coverage
 """
@@ -21,7 +21,8 @@ from slspector.graph import create_graph
 from slspector.nodes.report import report
 from slspector.providers import resolve_provider
 
-app = typer.Typer(add_completion=False, help="SharingLinkSpector: 分享链接风险标注（静态+LLM 双轨）")
+app = typer.Typer(add_completion=False,
+                  help="SharingLinkSpector: sharing-link risk annotation (static + LLM dual track)")
 console = Console()
 
 
@@ -42,21 +43,28 @@ def _iter_records(path: Path, limit: int | None, offset: int = 0):
 
 @app.command()
 def scan(
-    input_path: Path = typer.Argument(..., exists=True, help="JSONL 文件（统一 schema）"),
-    output: Path = typer.Option(Path("out"), "-o", help="输出目录"),
-    limit: int = typer.Option(None, "--limit", help="最多扫描条数"),
-    offset: int = typer.Option(0, "--offset", help="跳过前 N 条"),
+    input_path: Path = typer.Argument(..., exists=True, help="JSONL file (unified schema)"),
+    output: Path = typer.Option(Path("out"), "-o", help="output directory"),
+    limit: int = typer.Option(None, "--limit", help="max records to scan"),
+    offset: int = typer.Option(0, "--offset", help="skip first N records"),
     provider: str = typer.Option(
-        None, "--provider", help="dmxapi | ollama | none（默认读 .env）"),
-    model: str = typer.Option(None, "--model", help="覆盖 provider 默认模型"),
-    no_llm: bool = typer.Option(False, "--no-llm", help="仅静态检测"),
-    analyzers: str = typer.Option(None, "--analyzers", help="仅运行指定 analyzer（逗号分隔）"),
+        None, "--provider", help="dmxapi | ollama | none (default: .env)"),
+    model: str = typer.Option(None, "--model", help="override provider default model"),
+    no_llm: bool = typer.Option(False, "--no-llm", help="static detection only"),
+    analyzers: str = typer.Option(None, "--analyzers", help="run only these analyzers (comma-separated)"),
+    chunk_chars: int = typer.Option(None, "--chunk-chars",
+                                    help="LLM chunk size in chars (default 24000, env SLSPECTOR_LLM_CHUNK_CHARS)"),
 ):
-    """扫描对话记录，输出 findings.jsonl / needs_review.jsonl / summary.md。"""
+    """Scan conversation records; writes findings.jsonl / needs_review.jsonl / summary.md."""
+    import os
+
+    if chunk_chars:
+        os.environ["SLSPECTOR_LLM_CHUNK_CHARS"] = str(chunk_chars)
+
     use_llm = not no_llm
     cfg = resolve_provider(provider, model) if use_llm else None
     if use_llm and cfg is None:
-        console.print("[yellow]LLM provider 未配置/无 key，降级为静态-only[/yellow]")
+        console.print("[yellow]LLM provider not configured / no API key; falling back to static-only[/yellow]")
         use_llm = False
     analyzer_filter = {a.strip() for a in analyzers.split(",")} if analyzers else None
 
@@ -98,50 +106,50 @@ def scan(
     _write_summary(output, n_records, n_findings, n_review, cat_counter, plat_counter,
                    time.monotonic() - t0, cfg.model if cfg else None)
     console.print(
-        f"[green]done[/green]: {n_records} records → {n_findings} findings "
+        f"[green]done[/green]: {n_records} records -> {n_findings} findings "
         f"({n_review} needs_review) in {time.monotonic() - t0:.1f}s\n"
-        f"输出: {findings_path}\n      {review_path}\n      {output / 'summary.md'}"
+        f"output: {findings_path}\n        {review_path}\n        {output / 'summary.md'}"
     )
 
 
 def _write_summary(out: Path, n_records, n_findings, n_review, cat_counter, plat_counter,
                    elapsed, model):
     lines = [
-        "# SharingLinkSpector 扫描汇总",
+        "# SharingLinkSpector Scan Summary",
         "",
-        f"- 记录数: {n_records}（平台分布: {dict(plat_counter)}）",
-        f"- findings: {n_findings}，needs_review: {n_review}",
-        f"- 耗时: {elapsed:.1f}s" + (f"，LLM: {model}" if model else "，静态-only"),
+        f"- records: {n_records} (platforms: {dict(plat_counter)})",
+        f"- findings: {n_findings}, needs_review: {n_review}",
+        f"- elapsed: {elapsed:.1f}s" + (f", LLM: {model}" if model else ", static-only"),
         "",
-        "## 命中类别分布",
+        "## Hits by category",
         "",
-        "| 类别 | 名称 | hits |",
-        "|------|------|------|",
+        "| ID | Category | hits |",
+        "|----|----------|------|",
     ]
     for cid, n in cat_counter.most_common():
         cat = taxonomy.get(cid) or {}
-        lines.append(f"| {cid} | {cat.get('leaf', '')} | {n} |")
-    lines += ["", "## Coverage（49 类，谁才能测）", "",
-              "| ID | 叶类 | 状态 | tracks | 说明 |", "|----|------|------|--------|------|"]
+        lines.append(f"| {cid} | {cat.get('leaf_en', '')} | {n} |")
+    lines += ["", "## Coverage (49 categories, who can test what)", "",
+              "| ID | Category | status | tracks | notes |", "|----|----------|--------|--------|-------|"]
     for row in taxonomy.coverage_report():
-        note = row["note"] or row["kevin_note"] or row["who_can_test"]
+        note = row["note"] or row["who_can_test"]
         lines.append(
-            f"| {row['id']} | {row['leaf']} | {row['status']} | "
-            f"{'/'.join(row['tracks'])} | {note[:80]} |"
+            f"| {row['id']} | {row['leaf_en']} | {row['status']} | "
+            f"{'/'.join(row['tracks'])} | {note[:90]} |"
         )
     (out / "summary.md").write_text("\n".join(lines), encoding="utf-8")
 
 
 @app.command()
 def coverage():
-    """打印 49 类 coverage 矩阵。"""
+    """Print the 49-category coverage matrix."""
     table = Table(title="Taxonomy v5 Coverage")
-    for col in ("ID", "叶类", "状态", "tracks", "谁才能测/说明"):
+    for col in ("ID", "Category", "status", "tracks", "who can test / notes"):
         table.add_column(col)
     for row in taxonomy.coverage_report():
         table.add_row(
-            row["id"], row["leaf"], row["status"], "/".join(row["tracks"]),
-            (row["note"] or row["kevin_note"] or row["who_can_test"])[:60],
+            row["id"], row["leaf_en"], row["status"], "/".join(row["tracks"]),
+            (row["note"] or row["who_can_test"])[:70],
         )
     console.print(table)
     console.print(dict(taxonomy.status_counts()))

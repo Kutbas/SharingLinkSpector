@@ -1,4 +1,4 @@
-"""dedup: 指纹去重 + 同类别同消息保留最高置信。"""
+"""dedup: fingerprint dedup + keep top-confidence per (category, message, pattern)."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ def dedup(state: SlspectorState) -> dict:
             continue
         seen.add(fp)
         out.append(f)
-    # 同 (taxonomy, message_index) 只保留 top-2 置信（避免同类刷屏）
+    # keep top-2 confidence per (taxonomy, message_index, pattern) to avoid flooding
     per_key: dict[tuple, list[Finding]] = {}
     for f in out:
         key = (f.taxonomy_id, f.location.message_index, f.pattern_id)

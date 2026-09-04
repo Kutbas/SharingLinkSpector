@@ -1,8 +1,13 @@
-"""LLM 语义分析 family: 按 categories.yaml 提示词逐类判定（Phase 1: 11 类）。
+"""LLM semantic analysis family: per-category judging driven by categories.yaml.
 
-每类一次调用（省 token：对话拼接后随 prompt 发送），输出严格 JSON
-{hit, confidence, evidence, reasoning}；解析失败重试一次。
-静态轨已命中的类别跳过 LLM 调用（双轨去重由 meta_analyzer 处理，此处省成本优先）。
+Phase 1 covers 11 categories. Long conversations are CHUNKED (see
+slspector.chunking) — every character is judged, no silent middle truncation,
+and no request can exceed the model input budget.
+
+Per category: judge each chunk independently, then merge results across chunks
+(best confidence kept, multi-chunk corroboration boosts confidence slightly).
+Categories already hit by the static track at confidence >= 0.7 are skipped to
+save tokens (dedup with static findings happens in meta_analyzer).
 """
 
 from __future__ import annotations
@@ -12,6 +17,7 @@ import re
 import time
 
 from slspector import taxonomy
+from slspector.chunking import Chunk, chunk_conversation, chunk_limits
 from slspector.models import Finding, MessageLocation
 from slspector.providers import ProviderConfig, make_client
 from slspector.state import AnalyzerNodeResponse, SlspectorState
@@ -19,7 +25,9 @@ from slspector.state import AnalyzerNodeResponse, SlspectorState
 ANALYZER_ID = "llm_analyzer"
 requires_llm = True
 
-MAX_TEXT_CHARS = 24_000  # 单次送入上限（≈8k token 中文），超出截断保头部+尾部
+STATIC_HIT_SKIP_CONF = 0.7
+MULTI_CHUNK_BOOST = 1.15
+MAX_FINDINGS_PER_CATEGORY = 5
 _PARSE_RETRY = 1
 
 _JSON_BLOCK = re.compile(r"\{.*\}", re.DOTALL)
@@ -29,34 +37,25 @@ class _LLMUnavailable(Exception):
     pass
 
 
-def _truncate(text: str) -> str:
-    if len(text) <= MAX_TEXT_CHARS:
-        return text
-    head = MAX_TEXT_CHARS * 2 // 3
-    tail = MAX_TEXT_CHARS - head
-    return text[:head] + "\n…[中段截断]…\n" + text[-tail:]
-
-
 def _parse_json(reply: str) -> dict:
     m = _JSON_BLOCK.search(reply)
     if not m:
-        raise ValueError("回复中无 JSON 块")
+        raise ValueError("no JSON block in reply")
     obj = json.loads(m.group(0))
     for k in ("hit", "confidence", "evidence", "reasoning"):
         if k not in obj:
-            raise ValueError(f"缺少字段 {k}")
+            raise ValueError(f"missing field {k}")
     obj["confidence"] = float(obj["confidence"])
     return obj
 
 
-def _judge_one(client, model: str, cid: str, prompt: str, conversation: str,
-               title: str | None) -> dict | None:
-    user_content = (
-        f"## 对话标题\n{title or '（无）'}\n\n## 对话记录\n{_truncate(conversation)}"
-    )
+def _judge_chunk(client, model: str, cid: str, prompt: str, chunk: Chunk,
+                 title: str | None) -> dict:
+    header = f"## Conversation title\n{title or '(none)'}\n\n"
+    footer = "" if chunk.index == 0 else f"\n\n[chunk {chunk.index + 1} of ongoing conversation]"
     messages = [
         {"role": "system", "content": prompt},
-        {"role": "user", "content": user_content},
+        {"role": "user", "content": header + chunk.text + footer},
     ]
     last_err: Exception | None = None
     for attempt in range(1 + _PARSE_RETRY):
@@ -70,54 +69,81 @@ def _judge_one(client, model: str, cid: str, prompt: str, conversation: str,
             return _parse_json(resp.choices[0].message.content or "")
         except Exception as exc:  # noqa: BLE001
             last_err = exc
-            # JSON 解析失败 → 追加纠错提示重试；网络错误 → 退避重试
             time.sleep(1.5 * (attempt + 1))
             messages = messages[:2] + [
-                {"role": "user", "content": "上次输出无法解析为要求的 JSON，请严格只输出 "
-                 '{"hit": bool, "confidence": 0~1, "evidence": "...", "reasoning": "..."}'}
+                {"role": "user", "content": "Your previous output could not be parsed. "
+                 "Output strict JSON only: {\"hit\": bool, \"confidence\": 0-1, "
+                 "\"evidence\": \"...\", \"reasoning\": \"...\"}"}
             ]
-    raise _LLMUnavailable(f"{cid}: {last_err}")
+    raise _LLMUnavailable(f"{cid}@chunk{chunk.index}: {last_err}")
 
 
 def analyze(state: SlspectorState, cfg: ProviderConfig) -> tuple[list[Finding], list[dict]]:
-    text = state["full_text"]
     title = (state.get("meta") or {}).get("title")
-    static_hit_ids = {f.taxonomy_id for f in state.get("findings", [])}
+    messages = state.get("messages") or []
+    static_hits: dict[str, float] = {}
+    for f in state.get("findings", []):
+        if f.detector == "static":
+            static_hits[f.taxonomy_id] = max(static_hits.get(f.taxonomy_id, 0.0), f.confidence)
+
+    max_chars, overlap = chunk_limits()
+    chunks = chunk_conversation(messages, max_chars=max_chars, overlap=overlap)
+
     findings: list[Finding] = []
     statuses: list[dict] = []
     client = make_client(cfg)
 
     for cid, cat in taxonomy.llm_categories().items():
-        # 静态同类别已命中（confidence≥0.7）→ 跳过 LLM 省 token
-        if cid in static_hit_ids:
+        if static_hits.get(cid, 0.0) >= STATIC_HIT_SKIP_CONF:
             statuses.append({"analyzer_id": ANALYZER_ID, "category": cid,
                              "status": "skipped_static_hit"})
             continue
         t0 = time.monotonic()
-        try:
-            result = _judge_one(client, cfg.model, cid, cat["llm"]["prompt"], text, title)
-        except _LLMUnavailable as exc:
+        per_chunk: list[dict] = []
+        err: str | None = None
+        for chunk in chunks:
+            try:
+                result = _judge_chunk(client, cfg.model, cid, cat["llm"]["prompt"], chunk, title)
+            except _LLMUnavailable as exc:
+                err = str(exc)[:200]
+                break
+            if result.get("hit"):
+                per_chunk.append(result)
+        if err:
             statuses.append({"analyzer_id": ANALYZER_ID, "category": cid,
-                             "status": "error", "detail": str(exc)[:200]})
+                             "status": "error", "detail": err})
             continue
-        if result.get("hit"):
+
+        if per_chunk:
+            best = max(per_chunk, key=lambda r: float(r["confidence"]))
+            conf = max(0.1, min(1.0, float(best["confidence"])))
+            corroborated = len(per_chunk) > 1
+            if corroborated:
+                conf = min(0.98, conf * MULTI_CHUNK_BOOST)
             cat_status = cat.get("status")
             findings.append(Finding(
                 taxonomy_id=cid,
                 pattern_id="LLM-1",
                 detector="llm",
-                confidence=max(0.1, min(1.0, float(result["confidence"]))),
-                message=f"LLM 判定: {cat['leaf']}",
-                location=MessageLocation(snippet=str(result.get("evidence", ""))[:200]),
-                matched_text=str(result.get("evidence", ""))[:200],
-                needs_review=cat_status == "candidate" or float(result["confidence"]) <= 0.5,
-                reasoning=str(result.get("reasoning", ""))[:300],
+                confidence=conf,
+                message=f"LLM verdict: {cat.get('leaf_en', cid)}",
+                location=MessageLocation(snippet=str(best.get("evidence", ""))[:200]),
+                matched_text=str(best.get("evidence", ""))[:200],
+                needs_review=(cat_status == "candidate") or conf <= 0.5,
+                reasoning=str(best.get("reasoning", ""))[:300],
                 analyzer_id=ANALYZER_ID,
-                evidence={"model": cfg.model},
+                evidence={
+                    "model": cfg.model,
+                    "chunks_hit": len(per_chunk),
+                    "chunks_total": len(chunks),
+                    "corroborated": corroborated,
+                },
             ))
-        statuses.append({"analyzer_id": ANALYZER_ID, "category": cid,
-                         "status": "ok", "hit": bool(result.get("hit")),
-                         "duration_ms": int((time.monotonic() - t0) * 1000)})
+        statuses.append({
+            "analyzer_id": ANALYZER_ID, "category": cid, "status": "ok",
+            "hit": bool(per_chunk), "chunks": len(chunks),
+            "duration_ms": int((time.monotonic() - t0) * 1000),
+        })
     return findings, statuses
 
 
@@ -127,8 +153,10 @@ def node(state: SlspectorState) -> AnalyzerNodeResponse:
     cfg = state.get("_provider_cfg") or resolve_provider(state.get("provider"))
     if cfg is None:
         return {"findings": [], "analyzer_status": [
-            {"analyzer_id": ANALYZER_ID, "status": "skipped", "detail": "provider 未配置"}]}
+            {"analyzer_id": ANALYZER_ID, "status": "skipped",
+             "detail": "no provider configured"}]}
     findings, statuses = analyze(state, cfg)
     return {"findings": findings,
-            "analyzer_status": [{"analyzer_id": ANALYZER_ID, "status": "ok",
-                                 "detail": f"{len(findings)} llm findings"}] + statuses}
+            "analyzer_status": [
+                {"analyzer_id": ANALYZER_ID, "status": "ok",
+                 "detail": f"{len(findings)} llm findings"}] + statuses}

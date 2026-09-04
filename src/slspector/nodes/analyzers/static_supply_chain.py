@@ -1,8 +1,8 @@
-"""静态供应链 family: B-CIA-9（恶意/仿冒依赖推荐）。
+"""Static supply-chain family: B-CIA-9 (malicious/imitation dependency recommendation).
 
-模式:
-- SC-1 typosquatting（编辑距离 vs 高频官方包清单）
-- SC-2 社工伪装话术 × 包推荐共现
+Patterns:
+- SC-1 typosquatting (edit distance vs curated official-package list)
+- SC-2 social-engineering wording co-occurring with package installs
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from slspector.state import AnalyzerNodeResponse, SlspectorState
 
 ANALYZER_ID = "static_supply_chain"
 
-# 高频官方包（py/npm 双生态，离线清单；Phase 2 可接 registry API）
+# frequent official packages (py/npm ecosystems, offline list; registry API in Phase 2)
 _PY_OFFICIAL = {
     "requests", "numpy", "pandas", "flask", "django", "fastapi", "httpx", "aiohttp",
     "sqlalchemy", "pydantic", "openai", "anthropic", "langchain", "langgraph",
@@ -29,13 +29,13 @@ _NPM_OFFICIAL = {
 }
 _OFFICIAL_ALL = _PY_OFFICIAL | _NPM_OFFICIAL
 
-# 包管理/安装语境
+# package-manager / install context
 _INSTALL_CTX = re.compile(
     r"(?i)(pip\s+install|pip3\s+install|npm\s+install|npm\s+i\s|yarn\s+add|pnpm\s+add|"
     r"uv\s+(add|pip\s+install)|poetry\s+add|conda\s+install|gem\s+install|cargo\s+add)",
 )
 _PKG_TOKEN = re.compile(r"(?i)(?:install|add|-i)\s+[@\w/.-]{2,60}")
-# 社工伪装（SC-2）
+# social engineering (SC-2)
 _SOCIAL_ENGINEERING = re.compile(
     r"(官方|推荐|最新|修复|official|recommended|fixed|patched|new).{0,30}"
     r"(包|库|package|library|module|sdk)|"
@@ -45,7 +45,7 @@ _SOCIAL_ENGINEERING = re.compile(
 
 
 def _edit_distance_within(a: str, b: str, max_d: int) -> bool:
-    """带早退的编辑距离 ≤ max_d 判断。"""
+    """Early-exit edit distance <= max_d check."""
     if abs(len(a) - len(b)) > max_d:
         return False
     prev = list(range(len(b) + 1))
@@ -77,7 +77,7 @@ def analyze(state: SlspectorState) -> list[Finding]:
     findings: list[Finding] = []
     se_hits = _SOCIAL_ENGINEERING.findall(text)
 
-    # 安装语境中的包名提取
+    # package-name extraction inside install context
     for m in _INSTALL_CTX.finditer(text):
         window = text[m.start() : m.start() + 160]
         for pm in _PKG_TOKEN.finditer(window):
@@ -94,18 +94,18 @@ def analyze(state: SlspectorState) -> list[Finding]:
                 findings.append(make_finding(
                     taxonomy_id="B-CIA-9", pattern_id="SC-1",
                     confidence=0.7 if has_se else 0.55,
-                    message=f"疑似 typosquatting 包: {pkg_name}（近似 {near}，编辑距离 {dist}）"
-                            + ("，伴随社工话术" if has_se else ""),
+                    message=f"Suspected typosquat package: {pkg_name} (near {near}, edit distance {dist})"
+                            + ("; with social-engineering wording" if has_se else ""),
                     state=state, pos=m.start(), matched_text=m.group(0)[:80],
                     needs_review=not has_se,
                     evidence={"pkg": pkg_name, "nearest_official": near, "distance": dist}))
 
-    # SC-2: 社工话术 + 任意包安装指令共现（不做 typosquat 判定时的兜底候选）
+    # SC-2: SE wording + any install command co-occurrence (fallback candidate without typosquat)
     if len(se_hits) >= 2 and _INSTALL_CTX.search(text):
         first = _INSTALL_CTX.search(text)
         findings.append(make_finding(
             taxonomy_id="B-CIA-9", pattern_id="SC-2", confidence=0.45,
-            message=f"安装指令 × 社工伪装话术（×{len(se_hits)}）共现（候选）",
+            message=f"Install command co-occurring with social-engineering wording (x{len(se_hits)}, candidate)",
             state=state, pos=first.start(), matched_text=first.group(0),
             needs_review=True, evidence={"se_count": len(se_hits)}))
 

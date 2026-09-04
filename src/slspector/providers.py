@@ -1,7 +1,8 @@
-"""LLM provider 预设：dmxapi（OpenAI 兼容）/ ollama（私有部署）。
+"""LLM provider presets: dmxapi (OpenAI-compatible) / ollama (private deployment).
 
-均通过 openai SDK 的 OpenAICompatible 接入（ollama 暴露 /v1 OpenAI 兼容端点），
-配置来自 .env / 环境变量，支持 CLI 覆盖。
+Both go through the openai SDK's compatible endpoint (ollama exposes an
+OpenAI-compatible /v1 API). Configuration comes from .env / environment
+variables with CLI overrides.
 """
 
 from __future__ import annotations
@@ -10,7 +11,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-try:  # .env 极简解析（无 python-dotenv 依赖）
+try:  # minimal .env parsing (no python-dotenv dependency)
     _env_file = Path(__file__).resolve().parent.parent.parent / ".env"
     if _env_file.exists():
         for _line in _env_file.read_text().splitlines():
@@ -54,13 +55,13 @@ _PRESETS = {
 
 def resolve_provider(name: str | None = None,
                      model_override: str | None = None) -> ProviderConfig | None:
-    """解析 provider 配置；无 key 或未配置返回 None（静态-only 模式）。"""
+    """Resolve provider config; returns None when unset/keyless (static-only mode)."""
     pname = (name or os.environ.get("SLSPECTOR_PROVIDER") or "").strip().lower()
     if pname in ("", "none"):
         return None
     factory = _PRESETS.get(pname)
     if factory is None:
-        raise ValueError(f"未知 provider: {pname}（可选: {'/'.join(_PRESETS)}）")
+        raise ValueError(f"unknown provider: {pname} (expected one of {'/'.join(_PRESETS)})")
     cfg = factory()
     if not cfg.api_key:
         return None

@@ -1,4 +1,4 @@
-"""meta_analyzer: 跨轨汇总（双轨共现提置信、coverage 标注、needs_review 分流）。"""
+"""meta_analyzer: cross-track aggregation (dual-track confidence boost, coverage, needs_review routing)."""
 
 from __future__ import annotations
 
@@ -16,14 +16,14 @@ def meta_analyzer(state: SlspectorState) -> dict:
     for f in findings:
         by_cat[f.taxonomy_id].append(f)
 
-    # 双轨共现：static + llm 同类别都命中 → 置信上调（×1.25，封顶 0.98）
+    # dual-track co-occurrence: static + llm both hit -> confidence boost (x1.25, cap 0.98)
     for cid, group in by_cat.items():
         detectors = {f.detector for f in group}
         if detectors == {"static", "llm"}:
             for f in group:
                 f.confidence = min(0.98, f.confidence * 1.25)
 
-    # 类别级 needs_review：taxonomy status=candidate 的强制 true
+    # category-level needs_review: forced true when taxonomy status=candidate
     for f in findings:
         cat = taxonomy.get(f.taxonomy_id)
         if cat and cat.get("status") == "candidate":
@@ -31,7 +31,7 @@ def meta_analyzer(state: SlspectorState) -> dict:
 
     needs_review = [f for f in findings if f.needs_review]
 
-    # coverage：本次扫描"声明覆盖"的类别状态汇总
+    # coverage: declared category-status summary for this scan
     cov = taxonomy.status_counts()
     return {
         "needs_review_findings": needs_review,

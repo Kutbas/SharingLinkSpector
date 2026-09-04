@@ -1,4 +1,4 @@
-"""加载 data/categories.yaml；提供类别查询与 coverage 汇总。"""
+"""Load data/categories.yaml; category lookup and coverage summaries."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ def get(cid: str) -> dict[str, Any] | None:
 
 
 def llm_categories() -> dict[str, dict[str, Any]]:
-    """Phase 1 配置了 LLM 提示词且未 skipped 的类别。"""
+    """Phase 1 categories with an LLM prompt configured and not skipped."""
     return {
         cid: c
         for cid, c in load_categories().items()
@@ -41,13 +41,14 @@ def status_counts() -> dict[str, int]:
 
 
 def coverage_report() -> list[dict[str, Any]]:
-    """报告用 coverage 矩阵：49 类四态 + 谁才能测说明。"""
+    """Coverage matrix for reports: 49 categories with status + who-can-test notes."""
     rows = []
     for cid, c in load_categories().items():
         rows.append(
             {
                 "id": cid,
                 "leaf": c["leaf"],
+                "leaf_en": c["leaf_en"],
                 "tracks": c["tracks"],
                 "status": c["status"],
                 "note": c.get("note") or "",
@@ -60,12 +61,12 @@ def coverage_report() -> list[dict[str, Any]]:
 
 def _who_can_test(c: dict[str, Any]) -> str:
     tracks = c["tracks"]
-    if "平台方" in tracks and not ({"静态", "LLM"} & set(tracks)):
-        return "仅平台方（访问日志/服务端链路），第三方不可观测"
-    if "动态" in tracks and not ({"静态", "LLM"} & set(tracks)):
-        return "需动态能力（沙箱/回源/重定向跟随），第三方可选做"
+    if "platform" in tracks and not ({"static", "llm"} & set(tracks)):
+        return "platform-only (access logs / server-side); not observable by third parties"
+    if "dynamic" in tracks and not ({"static", "llm"} & set(tracks)):
+        return "requires dynamic capability (sandbox/refetch/redirect-follow); optional for third parties"
     if c["status"] == "future_work":
-        return "第三方理论可测但依赖外部能力（多模态/解码器/检索/语料级），future work"
+        return "theoretically testable by third parties but needs external capability (multimodal/decoders/retrieval/corpus-level); future work"
     if c["status"] == "skipped":
-        return "不标注（Kevin 判定：无检测特征或载荷不可得）"
-    return "第三方可测（静态/LLM）"
+        return "not labeled (Kevin's verdict: no detectable feature or payload unavailable)"
+    return "testable by third parties (static/LLM)"

@@ -1,10 +1,10 @@
-"""Analyzer 自动发现注册（借鉴 SkillSpector pkgutil 模式）。
+"""Analyzer auto-discovery registry (cf. SkillSpector pkgutil pattern).
 
-每个 family 模块需暴露:
+Each family module must expose:
 - ANALYZER_ID: str
 - node(state) -> AnalyzerNodeResponse
-- 可选 requires_llm: bool（True 且未配置 LLM 时跳过）
-- 可选 is_available() -> bool
+- optional requires_llm: bool (skipped when True and no LLM configured)
+- optional is_available() -> bool
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ def _discover() -> None:
 
 
 def get_analyzers(use_llm: bool) -> list[tuple[str, Any]]:
-    """返回 (analyzer_id, node) 列表，按可用性过滤。"""
+    """Return [(analyzer_id, node)] filtered by availability."""
     _discover()
     out = []
     for analyzer_id in ANALYZER_NODE_IDS:

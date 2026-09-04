@@ -1,11 +1,11 @@
-"""静态滥用/DoS family: B-A-2/3/4 + B-IA-4 + B-IA-5。
+"""Static abuse/DoS family: B-A-2/3/4 + B-IA-4 + B-IA-5.
 
-模式:
-- AB-1 体量/嵌套深度/表格规模阈值（B-A-2）
-- AB-2 病态重复模式（B-A-3 ReDoS 对抗样本）
-- AB-3 压缩比异常（B-A-4 zip 炸弹/实体展开类）
-- AB-4 base64/hex 解码探针→C2 特征（B-IA-4，Kevin 红标: 候选+人工核验）
-- AB-5 归档路径穿越特征（B-IA-5，候选）
+Patterns:
+- AB-1 volume / nesting depth / table scale thresholds (B-A-2)
+- AB-2 pathological repetition (B-A-3 ReDoS adversarial payloads)
+- AB-3 compression-ratio anomalies (B-A-4 zip bombs / entity expansion)
+- AB-4 base64/hex decode probes -> C2 features (B-IA-4, red-flag: candidate + manual review)
+- AB-5 archive path-traversal markers (B-IA-5, candidate)
 """
 
 from __future__ import annotations
@@ -25,9 +25,9 @@ SIZE_HIGH_CHARS = 300_000
 NESTED_DEPTH_WARN = 40
 TABLE_COLS_WARN = 60
 
-# AB-2 病态重复：对抗样本结构（嵌套量词正则文本 / 单词连续重复 ≥30 / 超长同字符）
-# 注意：不能直接用 (a+)+b 当检测器——它会匹配正文里所有 "ab"；
-# 检测对象是攻击载荷本身：字面嵌套量词正则串、超长重复。
+# AB-2 pathological repetition: adversarial payload structures (literal nested-quantifier
+# regex text / word repeated >=30x / very long same-char runs). Note: (a+)+b itself must NOT
+# be used as a detector - it matches every "ab" in prose; detect the payload, not the disease.
 _NESTED_QUANTIFIER_TEXT = re.compile(
     r"\([A-Za-z0-9_\[\]{}|]+[+*]\)[+*]"
     r"|\([A-Za-z0-9_|]+\|[A-Za-z0-9_|]+\)[+*]{1}?"
@@ -35,17 +35,17 @@ _NESTED_QUANTIFIER_TEXT = re.compile(
 _WORD_REPEAT = re.compile(r"\b(\w{1,12})(\s+\1\b){29,}", re.IGNORECASE)
 _CHAR_RUN = re.compile(r"(.)\1{999,}")
 
-# AB-4 解码探针
+# AB-4 decode probes
 _B64_CANDIDATE = re.compile(r"(?<![A-Za-z0-9+/=])[A-Za-z0-9+/]{40,}={0,2}(?![A-Za-z0-9+/=])")
 _HEX_CANDIDATE = re.compile(r"(?<![0-9a-fA-F])[0-9a-fA-F]{60,}(?![0-9a-fA-F])")
 _DECODED_SUSPECT = re.compile(
     r"(?:\d{1,3}\.){3}\d{1,3}"                      # IP
-    r"|[A-Za-z0-9-]+\.(?:com|net|org|io|cn|ru|xyz|top|tk|cc|vip|club|online|shop)\b"  # 域名
-    r"|(?:/bin/(?:ba)?sh|nc\s+-e|bash\s+-i|powershell|cmd\.exe|curl\s|wget\s)"        # 命令
+    r"|[A-Za-z0-9-]+\.(?:com|net|org|io|cn|ru|xyz|top|tk|cc|vip|club|online|shop)\b"  # domain
+    r"|(?:/bin/(?:ba)?sh|nc\s+-e|bash\s+-i|powershell|cmd\.exe|curl\s|wget\s)"        # command
     r"|(?:https?://[^\s\"']{8,})",                                                    # URL
 )
 
-# AB-5 归档穿越
+# AB-5 archive traversal
 _ARCHIVE_TRAVERSAL = re.compile(
     r"(?:^|[/\\])\.\.(?:[/\\]|$)" r"|(?:^|[\"'/])/(?:etc|usr|var|root|home|tmp)/" r"|\bsymlink\s*->",
 )
@@ -57,18 +57,18 @@ def analyze(state: SlspectorState) -> list[Finding]:
     attachments = state.get("attachments") or []
     findings: list[Finding] = []
 
-    # AB-1 B-A-2 体量
+    # AB-1 B-A-2 volume
     chars = int(stats.get("chars") or len(text))
     if chars >= SIZE_HIGH_CHARS:
         findings.append(make_record_finding(
             taxonomy_id="B-A-2", pattern_id="AB-1", confidence=0.7,
-            message=f"超大内容体量（{chars:,} 字符）", evidence={"chars": chars}))
+            message=f"Oversized content volume ({chars:,} chars)", evidence={"chars": chars}))
     elif chars >= SIZE_WARN_CHARS:
         findings.append(make_record_finding(
             taxonomy_id="B-A-2", pattern_id="AB-1", confidence=0.4,
-            message=f"大内容体量（{chars:,} 字符）", needs_review=True,
+            message=f"Large content volume ({chars:,} chars)", needs_review=True,
             evidence={"chars": chars}))
-    # 嵌套深度（markdown 引用/列表嵌套）
+    # nesting depth (markdown quote/list nesting)
     depth = max_line_depth = 0
     for ln in text.splitlines():
         d = len(ln) - len(ln.lstrip(" >\t"))
@@ -76,34 +76,34 @@ def analyze(state: SlspectorState) -> list[Finding]:
     if max_line_depth >= NESTED_DEPTH_WARN:
         findings.append(make_record_finding(
             taxonomy_id="B-A-2", pattern_id="AB-1", confidence=0.5,
-            message=f"深层嵌套结构（depth={max_line_depth}）", needs_review=True,
+            message=f"Deeply nested structure (depth={max_line_depth})", needs_review=True,
             evidence={"depth": max_line_depth}))
-    # 表格列数
+    # table column count
     for ln in text.splitlines():
         if ln.count("|") >= TABLE_COLS_WARN:
             findings.append(make_record_finding(
                 taxonomy_id="B-A-2", pattern_id="AB-1", confidence=0.5,
-                message=f"超宽表格行（{ln.count('|')} 列）", needs_review=True))
+                message=f"Oversized table row ({ln.count('|')} columns)", needs_review=True))
             break
 
-    # AB-2 B-A-3 病态重复
+    # AB-2 B-A-3 pathological repetition
     for m in _NESTED_QUANTIFIER_TEXT.finditer(text):
         findings.append(make_finding(
             taxonomy_id="B-A-3", pattern_id="AB-2", confidence=0.75,
-            message="嵌套量词正则对抗样本特征", state=state,
+            message="Nested-quantifier ReDoS payload structure", state=state,
             pos=m.start(), matched_text=m.group(0)[:80]))
         break
     for m in _WORD_REPEAT.finditer(text):
         findings.append(make_finding(
             taxonomy_id="B-A-3", pattern_id="AB-2", confidence=0.5,
-            message=f"单词连续重复 ≥30 次（{m.group(1)!r}）", state=state,
+            message=f"Word repeated consecutively >=30 times ({m.group(1)!r})", state=state,
             pos=m.start(), matched_text=m.group(0)[:80], needs_review=True,
             evidence={"word": m.group(1)}))
         break
     for m in _CHAR_RUN.finditer(text):
         findings.append(make_finding(
             taxonomy_id="B-A-3", pattern_id="AB-2", confidence=0.75,
-            message=f"单字符超长连续（{len(m.group(0)):,}）", state=state,
+            message=f"Very long single-character run ({len(m.group(0)):,})", state=state,
             pos=m.start(), matched_text=m.group(0)[:20] + "…",
             evidence={"run_len": len(m.group(0))}))
         break
@@ -111,38 +111,38 @@ def analyze(state: SlspectorState) -> list[Finding]:
     if longest_repeat >= 20_000:
         findings.append(make_record_finding(
             taxonomy_id="B-A-3", pattern_id="AB-2", confidence=0.7,
-            message=f"超长前缀重复（≈{longest_repeat:,} 字符）",
+            message=f"Long repeated prefix (~{longest_repeat:,} chars)",
             evidence={"longest_repeat": longest_repeat}))
 
-    # AB-3 B-A-4 压缩比
+    # AB-3 B-A-4 compression ratio
     ratio = float(stats.get("compression_ratio") or 1.0)
     if chars > 10_000 and ratio < 0.01:
         findings.append(make_record_finding(
             taxonomy_id="B-A-4", pattern_id="AB-3", confidence=0.75,
-            message=f"极端低压缩比（{ratio}，疑似压缩炸弹结构）",
+            message=f"Extreme low compression ratio ({ratio}, suspected zip-bomb structure)",
             evidence={"compression_ratio": ratio, "chars": chars}))
     elif chars > 10_000 and ratio < 0.05:
         findings.append(make_record_finding(
             taxonomy_id="B-A-4", pattern_id="AB-3", confidence=0.45,
-            message=f"低压缩比（{ratio}，候选）", needs_review=True,
+            message=f"Low compression ratio ({ratio}, candidate)", needs_review=True,
             evidence={"compression_ratio": ratio, "chars": chars}))
-    # 实体展开比：&xxe; 重复 × 千次级
+    # entity expansion ratio: &xxe; repeated thousands of times
     entity_refs = re.findall(r"&\w+;", text)
     if len(entity_refs) > 2_000 and len(set(entity_refs)) < 10:
         findings.append(make_record_finding(
             taxonomy_id="B-A-4", pattern_id="AB-3", confidence=0.6,
-            message=f"实体引用海量重复（{len(entity_refs):,} 次）",
+            message=f"Massive entity-reference repetition ({len(entity_refs):,} times)",
             evidence={"distinct": len(set(entity_refs)), "total": len(entity_refs)}))
-    # 附件面：attachment_info 的 file_type/大小线索
+    # attachment surface: file_type/size hints from attachment_info
     for a in attachments:
         ft = str(a.get("file_type") or "")
         if any(k in ft.lower() for k in ("zip", "gzip", "rar", "7z", "tar")):
             findings.append(make_record_finding(
                 taxonomy_id="B-A-4", pattern_id="AB-3", confidence=0.4,
-                message=f"归档附件（{a.get('file_name') or ft}，需人工核验大小）",
+                message=f"Archive attachment ({a.get('file_name') or ft}, size needs manual verification)",
                 needs_review=True, evidence={"attachment": a}))
 
-    # AB-4 B-IA-4 解码探针（候选+人工核验）
+    # AB-4 B-IA-4 decode probes (candidate + manual review)
     decoded_hits = 0
     for m in list(_B64_CANDIDATE.finditer(text))[:30]:
         tok = m.group(0)
@@ -161,7 +161,7 @@ def analyze(state: SlspectorState) -> list[Finding]:
             decoded_hits += 1
             findings.append(make_finding(
                 taxonomy_id="B-IA-4", pattern_id="AB-4", confidence=0.5,
-                message=f"base64 解码后含可疑特征: {dm.group(0)[:50]}", state=state,
+                message=f"base64-decoded suspicious feature: {dm.group(0)[:50]}", state=state,
                 pos=m.start(), matched_text=tok[:60] + "…", needs_review=True,
                 evidence={"decoded_hit": dm.group(0)[:80]}))
             break
@@ -177,27 +177,27 @@ def analyze(state: SlspectorState) -> list[Finding]:
             decoded_hits += 1
             findings.append(make_finding(
                 taxonomy_id="B-IA-4", pattern_id="AB-4", confidence=0.5,
-                message=f"hex 解码后含可疑特征: {dm.group(0)[:50]}", state=state,
+                message=f"hex-decoded suspicious feature: {dm.group(0)[:50]}", state=state,
                 pos=m.start(), matched_text=tok[:60] + "…", needs_review=True,
                 evidence={"decoded_hit": dm.group(0)[:80]}))
             break
     if decoded_hits == 0 and _B64_CANDIDATE.search(text) is None and _HEX_CANDIDATE.search(text) is None:
-        pass  # 无候选，正常
+        pass  # no candidates, fine
 
-    # AB-5 B-IA-5 归档穿越（附件名面 + 文本中的归档清单）
+    # AB-5 B-IA-5 archive traversal (attachment names + archive listings in text)
     for a in attachments:
         fname = str(a.get("file_name") or "")
         if _ARCHIVE_TRAVERSAL.search(fname):
             findings.append(make_record_finding(
                 taxonomy_id="B-IA-5", pattern_id="AB-5", confidence=0.8,
-                message=f"附件名含路径穿越特征: {fname}", needs_review=True,
+                message=f"Attachment filename contains path-traversal marker: {fname}", needs_review=True,
                 evidence={"file_name": fname}))
     for m in re.finditer(
         r"(?i)(?:zip|tar|unzip|archive)\s+(?:-x|--extract|xf|rv)\s+.{0,60}(\.\./|/etc/|/root/)", text
     ):
         findings.append(make_finding(
             taxonomy_id="B-IA-5", pattern_id="AB-5", confidence=0.55,
-            message="归档解压命令含穿越路径", state=state,
+            message="Archive extraction command contains traversal path", state=state,
             pos=m.start(), matched_text=m.group(0)[:100], needs_review=True))
 
     return findings

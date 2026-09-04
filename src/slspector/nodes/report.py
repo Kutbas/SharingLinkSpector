@@ -1,4 +1,4 @@
-"""report: 单记录结果 → dict（由 CLI 聚合写盘）。"""
+"""report: per-record result -> dict (aggregated and written by the CLI)."""
 
 from __future__ import annotations
 

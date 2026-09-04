@@ -1,4 +1,5 @@
-"""build_context: 原始记录 → 分析面（全文/偏移/链接/附件/统计）。"""
+"""build_context: raw record -> analysis surfaces (full text / offsets / links /
+attachments / stats / normalized messages for chunking)."""
 
 from __future__ import annotations
 
@@ -21,6 +22,7 @@ def build_context(state: SlspectorState) -> dict:
             "title": norm["title"],
             "crawl_time": norm["crawl_time"],
         },
+        "messages": norm["messages"],
         "full_text": full_text,
         "message_offsets": offsets,
         "links": links,

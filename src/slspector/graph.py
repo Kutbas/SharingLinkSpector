@@ -1,6 +1,6 @@
-"""LangGraph 编排（借鉴 SkillSpector graph.py，适配对话记录扫描）。
+"""LangGraph orchestration (adapted from SkillSpector graph.py for record scanning).
 
-START → build_context → [analyzers 并行] → dedup → meta_analyzer → END
+START -> build_context -> [analyzers in parallel] -> dedup -> meta_analyzer -> END
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ logger = get_logger(__name__)
 
 
 def _guard(analyzer_id: str, node_func):
-    """单 analyzer 异常不炸整条扫描（借鉴 guard_analyzer_node）。"""
+    """One analyzer failure must not kill the whole scan (cf. guard_analyzer_node)."""
 
     def wrapped(state: SlspectorState):
         try:

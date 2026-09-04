@@ -1,4 +1,4 @@
-"""Analyzer family 公共工具：上下文截取、finding 构造。"""
+"""Shared analyzer-family utilities: context extraction, finding construction."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ def make_finding(
     needs_review: bool = False,
     evidence: dict | None = None,
 ) -> Finding:
-    """按全文偏移定位消息并构造 Finding。"""
+    """Locate the message by full-text offset and build a Finding."""
     idx, role = locate_message(state["message_offsets"], pos)
     return Finding(
         taxonomy_id=taxonomy_id,
@@ -61,7 +61,7 @@ def make_record_finding(
     evidence: dict | None = None,
     matched_text: str | None = None,
 ) -> Finding:
-    """记录级 finding（元数据/附件面，无消息定位）。"""
+    """Record-level finding (metadata/attachment surface, no message location)."""
     return Finding(
         taxonomy_id=taxonomy_id,
         pattern_id=pattern_id,
