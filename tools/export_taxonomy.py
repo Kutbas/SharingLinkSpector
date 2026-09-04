@@ -5,7 +5,7 @@ Produces the single source of truth consumed by slspector at runtime:
 - 49 categories with ID / L1 / leaf / definition / source / detection-method text
 - leaf_en: English leaf names for the English-venue paper and tool output
 - detectability: which tracks are possible (static/llm/dynamic/metadata/platform)
-- kevin_note: verbatim I-column "verdict rationale (red-flagged items)"
+- verdict_note: verbatim annotator rationale for red-flagged items
 - llm.prompt: English judging prompts for Phase 1 LLM categories
 
 Re-run:  uv run --extra export python tools/export_taxonomy.py
@@ -20,7 +20,7 @@ import openpyxl
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_XLSX = ROOT / "taxonomy-0901-v5.xlsx"
+DEFAULT_XLSX = ROOT / "local" / "taxonomy-0901-v5.xlsx"  # source sheet kept out of VCS
 OUT = ROOT / "data" / "categories.yaml"
 
 # English leaf names (single source for paper + tool output)
@@ -266,7 +266,7 @@ def main() -> None:
         disp = RED_FLAG_DISPOSITION.get(cid)
         status = STATUS_OVERRIDES.get(cid, disp["status"] if disp else PLANNED.get(cid, "implemented"))
         note = disp["reason"] if disp else CAPABILITY_NOTES.get(cid, "")
-        kevin_note = str(row["判定理由（红标项）"] or "") or None
+        verdict_note = str(row["判定理由（红标项）"] or "") or None
         cat = {
             "id": cid,
             "model": str(row["威胁模型"] or ""),
@@ -279,7 +279,7 @@ def main() -> None:
             "tracks": [TRACK_EN[t] for t in parse_tracks(h)],
             "status": status,
             "note": note,
-            "kevin_note": kevin_note,
+            "verdict_note": verdict_note,
         }
         if cid in LLM_COVERAGE:
             cat["llm"] = {

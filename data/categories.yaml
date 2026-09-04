@@ -30,7 +30,7 @@ categories:
   - llm
   status: implemented
   note: ''
-  kevin_note: null
+  verdict_note: null
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "Identity information disclosure".
@@ -71,7 +71,7 @@ categories:
   - llm
   status: implemented
   note: ''
-  kevin_note: null
+  verdict_note: null
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "Sensitive privacy disclosure".
@@ -113,7 +113,7 @@ categories:
   - llm
   status: implemented
   note: ''
-  kevin_note: null
+  verdict_note: null
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "Credential leakage".
@@ -155,7 +155,7 @@ categories:
   - llm
   status: implemented
   note: ''
-  kevin_note: null
+  verdict_note: null
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "Technical information leakage".
@@ -196,7 +196,7 @@ categories:
   - llm
   status: implemented
   note: ''
-  kevin_note: null
+  verdict_note: null
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "Digital footprint leakage".
@@ -237,7 +237,7 @@ categories:
   - static
   status: implemented
   note: ''
-  kevin_note: null
+  verdict_note: null
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "High-risk personal safety information".
@@ -278,7 +278,7 @@ categories:
   - llm
   status: implemented
   note: ''
-  kevin_note: null
+  verdict_note: null
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "Jailbreak showcase".
@@ -319,7 +319,7 @@ categories:
   - llm
   status: implemented
   note: ''
-  kevin_note: null
+  verdict_note: null
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "System prompt disclosure".
@@ -362,7 +362,7 @@ categories:
   - llm
   status: implemented
   note: ''
-  kevin_note: null
+  verdict_note: null
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "External resource tracking (viewer de-anonymization)".
@@ -406,7 +406,7 @@ categories:
   status: skipped
   note: 'No detectable feature; paper story only, not labeled; distillation attack itself not observable by third parties;
     Kevin''s I-column verdict: skipped'
-  kevin_note: 没有可行的检测特征。因此这个可以作为我们论文故事的一部分，但是不用实际标注（理论上所有帖子都会有这个安全隐患）
+  verdict_note: 没有可行的检测特征。因此这个可以作为我们论文故事的一部分，但是不用实际标注（理论上所有帖子都会有这个安全隐患）
 - id: B-C-4
   model: Model B
   l1: DIS 泄露与收割
@@ -422,7 +422,7 @@ categories:
   - llm
   status: implemented
   note: ''
-  kevin_note: null
+  verdict_note: null
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "Preview-triggered SSRF".
@@ -473,7 +473,7 @@ categories:
   - platform
   status: implemented
   note: Payload lives in raw bytes; static scan detects it
-  kevin_note: 这里的攻击载荷就写在 SVG/XML 的原始字节里，扫一遍字节就能发现。只要数据存的是原始文件字节理论上就可以检测。
+  verdict_note: 这里的攻击载荷就写在 SVG/XML 的原始字节里，扫一遍字节就能发现。只要数据存的是原始文件字节理论上就可以检测。
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "XML external entity injection (XXE)".
@@ -516,7 +516,7 @@ categories:
   - platform
   status: candidate
   note: Flag anomalous cross-origin resource candidates -> manual review; victim presence not required
-  kevin_note: 可以通过识别对话中嵌入的异常跨源资源检测候选，然后对候选进行人工核验。（注意，我们的检测目标并不是确认攻击的完整可达，因此无需确保受害者在场，只需要识别可能有此类威胁的案例即可）
+  verdict_note: 可以通过识别对话中嵌入的异常跨源资源检测候选，然后对候选进行人工核验。（注意，我们的检测目标并不是确认攻击的完整可达，因此无需确保受害者在场，只需要识别可能有此类威胁的案例即可）
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "Cross-site leaks (XS-Leaks)".
@@ -557,7 +557,7 @@ categories:
   - llm
   status: implemented
   note: ''
-  kevin_note: null
+  verdict_note: null
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "Harmful content hosting/distribution".
@@ -598,7 +598,7 @@ categories:
   - llm
   status: implemented
   note: ''
-  kevin_note: null
+  verdict_note: null
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "AI search results manipulation (GEO)".
@@ -639,7 +639,7 @@ categories:
   - llm
   status: implemented
   note: ''
-  kevin_note: null
+  verdict_note: null
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "Traditional SEO manipulation".
@@ -680,7 +680,7 @@ categories:
   - llm
   status: phase2_dynamic
   note: ''
-  kevin_note: null
+  verdict_note: null
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "Share preview card forgery (OpenGraph/oEmbed)".
@@ -728,7 +728,7 @@ categories:
   - metadata
   status: future_work
   note: ''
-  kevin_note: null
+  verdict_note: null
 - id: B-I-6
   model: Model B
   l1: DEC 伪造·欺骗·社工
@@ -743,7 +743,7 @@ categories:
   - metadata
   status: future_work
   note: ''
-  kevin_note: null
+  verdict_note: null
 - id: B-I-7
   model: Model B
   l1: DEC 伪造·欺骗·社工
@@ -757,7 +757,7 @@ categories:
   - llm
   status: implemented
   note: ''
-  kevin_note: null
+  verdict_note: null
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "Moderation classifier evasion (obfuscation)".
@@ -798,7 +798,7 @@ categories:
   - static
   status: implemented
   note: ''
-  kevin_note: null
+  verdict_note: null
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "False factual claims".
@@ -846,7 +846,7 @@ categories:
   - static
   status: implemented
   note: ''
-  kevin_note: null
+  verdict_note: null
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "Misleading summaries".
@@ -887,7 +887,7 @@ categories:
   - static
   status: implemented
   note: ''
-  kevin_note: null
+  verdict_note: null
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "Harmful decision advice".
@@ -929,7 +929,7 @@ categories:
   status: skipped
   note: 'No detectable feature; paper story only, not labeled; creation-side rate data not available to third parties; Kevin''s
     I-column verdict: skipped'
-  kevin_note: 没有可行的检测特征。因此这个可以作为我们论文故事的一部分，但是不用实际标注
+  verdict_note: 没有可行的检测特征。因此这个可以作为我们论文故事的一部分，但是不用实际标注
 - id: B-A-2
   model: Model B
   l1: DoS 资源耗尽
@@ -944,7 +944,7 @@ categories:
   - llm
   status: implemented
   note: ''
-  kevin_note: null
+  verdict_note: null
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "Complex content rendering exhaustion".
@@ -991,7 +991,7 @@ categories:
   - llm
   status: implemented
   note: ''
-  kevin_note: null
+  verdict_note: null
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "Regex denial of service via crafted content".
@@ -1040,7 +1040,7 @@ categories:
   - llm
   status: implemented
   note: ''
-  kevin_note: null
+  verdict_note: null
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "Decompression/media bombs".
@@ -1081,7 +1081,7 @@ categories:
   - static
   status: future_work
   note: requires a multimodal provider (image content); text-only LLM track cannot judge
-  kevin_note: null
+  verdict_note: null
 - id: B-CI-2
   model: Model B
   l1: INJ 注入与执行
@@ -1096,7 +1096,7 @@ categories:
   - llm
   status: implemented
   note: ''
-  kevin_note: null
+  verdict_note: null
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "Zero-width/Bidi hidden-character injection".
@@ -1138,7 +1138,7 @@ categories:
   - llm
   status: implemented
   note: ''
-  kevin_note: null
+  verdict_note: null
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "Trusted-domain phishing/social engineering".
@@ -1180,7 +1180,7 @@ categories:
   - llm
   status: implemented
   note: ''
-  kevin_note: null
+  verdict_note: null
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "Hyperlink anchor-text spoofing".
@@ -1224,7 +1224,7 @@ categories:
   - llm
   status: implemented
   note: ''
-  kevin_note: null
+  verdict_note: null
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "Open redirect".
@@ -1267,7 +1267,7 @@ categories:
   - platform
   status: candidate
   note: Candidate external links detectable; verdict needs target-site info -> manual review
-  kevin_note: 难度很高，可以识别候选外链，但是具体判断需要根据外链目标网络也的信息来识别。需要对候选进行人工核验。
+  verdict_note: 难度很高，可以识别候选外链，但是具体判断需要根据外链目标网络也的信息来识别。需要对候选进行人工核验。
 - id: B-CI-7
   model: Model B
   l1: DEC 伪造·欺骗·社工
@@ -1282,7 +1282,7 @@ categories:
   - llm
   status: implemented
   note: ''
-  kevin_note: null
+  verdict_note: null
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "Embedded malicious QR codes (quishing)".
@@ -1331,7 +1331,7 @@ categories:
   - platform
   status: implemented
   note: Poisoning-instruction templates + LLM intent/contextual-fit judgment
-  kevin_note: 这个可以找一些现有的指令注入或者投毒的模板，比如“请记住/永久/以后所有回答…”这种模式，然后也让LLM评估一下植入意图以及和前后文的语义一致性——一般来说投毒指令都是很突兀的。
+  verdict_note: 这个可以找一些现有的指令注入或者投毒的模板，比如“请记住/永久/以后所有回答…”这种模式，然后也让LLM评估一下植入意图以及和前后文的语义一致性——一般来说投毒指令都是很突兀的。
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "Cross-session persistent memory poisoning".
@@ -1373,7 +1373,7 @@ categories:
   - platform
   status: implemented
   note: Hidden-instruction templates; false-fact poisoning undetectable (documented)
-  kevin_note: 这个和“跨会话记忆投毒”很像。可以用隐藏指令模板来检测，但是投毒有时候会用错误事实或者错误知识，这种目前是很难检测的
+  verdict_note: 这个和“跨会话记忆投毒”很像。可以用隐藏指令模板来检测，但是投毒有时候会用错误事实或者错误知识，这种目前是很难检测的
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "Enterprise RAG/knowledge-base poisoning".
@@ -1415,7 +1415,7 @@ categories:
   - llm
   status: implemented
   note: 'Same as B-IA-1: hidden-instruction templates primary'
-  kevin_note: 这个和“跨会话记忆投毒”很像。可以用隐藏指令模板来检测，但是投毒有时候会用错误事实或者错误知识，这种目前是很难检测的
+  verdict_note: 这个和“跨会话记忆投毒”很像。可以用隐藏指令模板来检测，但是投毒有时候会用错误事实或者错误知识，这种目前是很难检测的
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "Passive cross-site state changes via share pages".
@@ -1457,7 +1457,7 @@ categories:
   status: future_work
   note: corpus-level clustering (batch layer over the full dataset), not per-record detection; corpus-level clustering capability
     (batch layer), out of scope for per-record detection
-  kevin_note: null
+  verdict_note: null
 - id: B-IA-4
   model: Model B
   l1: COV 隐蔽信道·基础设施滥用
@@ -1472,7 +1472,7 @@ categories:
   - platform
   status: candidate
   note: base64/hex decode probes produce candidates -> manual/LLM target verification
-  kevin_note: 根据内容理论上可以挑出候选（例如一段 base64/十六进制字符串，解码后像 IP/域名/命令）。但是真实性验证需要人工核验或者让LLM检验目标IP域名内容
+  verdict_note: 根据内容理论上可以挑出候选（例如一段 base64/十六进制字符串，解码后像 IP/域名/命令）。但是真实性验证需要人工核验或者让LLM检验目标IP域名内容
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "Share links as C2 dead drops".
@@ -1520,7 +1520,7 @@ categories:
   - llm
   status: candidate
   note: H column explicitly marks LLM as not applicable (structural static detection suffices)
-  kevin_note: null
+  verdict_note: null
 - id: B-CIA-1
   model: Model B
   l1: INJ 注入与执行
@@ -1540,7 +1540,7 @@ categories:
   - dynamic
   status: implemented
   note: ''
-  kevin_note: null
+  verdict_note: null
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "Natural-language instruction hijacking (direct prompt injection)".
@@ -1589,7 +1589,7 @@ categories:
   - llm
   status: implemented
   note: ''
-  kevin_note: null
+  verdict_note: null
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "AI-summary-driven social engineering".
@@ -1635,7 +1635,7 @@ categories:
   - platform
   status: implemented
   note: Executable-structure static detection; attack realization irrelevant
-  kevin_note: 可以通过可执行结构进行静态检测。还是那句话，我们不需要管攻击是否真正发生，我们要的是扫描风险
+  verdict_note: 可以通过可执行结构进行静态检测。还是那句话，我们不需要管攻击是否真正发生，我们要的是扫描风险
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "Stored XSS in shared content".
@@ -1678,7 +1678,7 @@ categories:
   - llm
   status: implemented
   note: ''
-  kevin_note: null
+  verdict_note: null
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "CSV/formula injection via tables".
@@ -1721,7 +1721,7 @@ categories:
   - llm
   status: implemented
   note: ''
-  kevin_note: null
+  verdict_note: null
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "Terminal ANSI escape injection".
@@ -1764,7 +1764,7 @@ categories:
   - platform
   status: candidate
   note: Template meta-syntax candidates, high FP rate -> manual review
-  kevin_note: 可以识别候选，但是很容易有误报。具体识别得通过人工核验，难度比较高。
+  verdict_note: 可以识别候选，但是很容易有误报。具体识别得通过人工核验，难度比较高。
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "Server-side template injection (SSTI)".
@@ -1805,7 +1805,7 @@ categories:
   - platform
   status: skipped
   note: Payload not in collected metadata; future work/discussion
-  kevin_note: 恶意载荷不在我们收集到的metadata里，暂时无法检测。可以放到论文的future work或者discussion
+  verdict_note: 恶意载荷不在我们收集到的metadata里，暂时无法检测。可以放到论文的future work或者discussion
 - id: B-CIA-8
   model: Model B
   l1: COV 隐蔽信道·基础设施滥用
@@ -1820,7 +1820,7 @@ categories:
   - llm
   status: implemented
   note: ''
-  kevin_note: null
+  verdict_note: null
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "Shared custom assistant/GPT configuration trojan".
@@ -1862,7 +1862,7 @@ categories:
   - llm
   status: implemented
   note: ''
-  kevin_note: null
+  verdict_note: null
   llm:
     prompt: 'You are a security risk annotator for AI conversation sharing links. Determine whether the conversation below
       exhibits the risk category "Malicious/imitation dependency recommendation".

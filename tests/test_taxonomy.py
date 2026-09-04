@@ -15,7 +15,7 @@ def test_skip_list_matches_kevin_decision():
     skipped = {cid for cid, c in cats.items() if c["status"] == "skipped"}
     assert skipped == {"B-C-3", "B-A-1", "B-CIA-7"}
     for cid in skipped:
-        assert cats[cid]["kevin_note"], f"{cid} must keep Kevin's rationale"
+        assert cats[cid]["verdict_note"], f"{cid} must keep the red-flag rationale"
     assert all("platform" in cats[cid]["tracks"] or "llm" in cats[cid]["tracks"]
                for cid in ("B-C-3", "B-A-1"))
 

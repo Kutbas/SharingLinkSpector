@@ -1,80 +1,118 @@
-# SharingLinkSpector (slspector)
+# SharingLinkSpector (`slspector`)
 
-Risk **annotation tool** for AI conversation sharing links.
+[English](README.md) | [中文](README_zh.md)
 
-Built on `taxonomy-0901-v5.xlsx` (49 risk categories, dual threat model:
-Model A endogenous / Model B external x CIA). It scans cleaned conversation
-records (unified-schema JSONL) with a **static + LLM dual track** and emits
-per-finding annotations (including a `needs_review` candidate queue).
-**No risk scoring** — labeling only.
+Risk **annotation tool** for AI-conversation sharing links.
 
-Architecture references [SkillSpector](../SkillSpector) (NVIDIA): LangGraph
-orchestration, auto-discovered analyzer modules, parallel execution ->
-dedup -> aggregation -> report.
+Publicly shared AI chat conversations (share links from ChatGPT, Claude,
+Gemini, Kimi, Grok, DeepSeek, etc.) can leak their owners' private data or
+become hosting grounds for phishing, injection, and abuse payloads.
+SharingLinkSpector scans cleaned conversation records (unified-schema JSONL)
+with a **static + LLM dual track** and emits per-finding risk annotations
+with confidence values and a `needs_review` candidate queue.
+**No risk scoring — labeling only.**
 
-## Principles
+## Risk taxonomy
 
-- **No 100% detection claims**: categories only testable by the platform or
-  via dynamic analysis are documented in the coverage report ("who can test")
-- Red-flagged categories follow Kevin's I-column verdicts: `skipped` (not
-  labeled) / `candidate` (needs_review queue) / template + LLM
-- Patterns and prompts are data-driven (`data/categories.yaml`); code only
-  provides detection primitives
-- **English-first codebase** (comments, messages, prompts, reports) for the
-  English-venue paper; Chinese lexicons remain inside detection regexes on
-  purpose (they detect Chinese-language risks)
+Detection is driven by a 49-category taxonomy of sharing-link risks
+(`data/categories.yaml`, the canonical machine-readable artifact):
+
+- **Dual threat model**: endogenous risks (Model A — the user unknowingly
+  exposes sensitive data) vs. external risks (Model B — an attacker abuses
+  the shared link or its content), crossed with confidentiality / integrity /
+  availability impact dimensions.
+- Leaf categories are grounded in public standards and attack catalogs
+  (NIST SP 800-122, MITRE ATT&CK / CAPEC, CWE, OWASP), not invented ad hoc.
+- Per category: tracks (static / llm / dynamic / metadata / platform),
+  status, definitions, detection guidance, and English judging prompts.
+- 31 categories have deterministic static detection; 40 have LLM judging
+  prompts; the remainder require dynamic, multimodal, or platform-side
+  capabilities and are explicitly documented as such (see Coverage).
+
+## Architecture
+
+```
+record JSONL ──> build_context ──> [ static families ∥ llm_analyzer ] ──> dedup ──> meta_analyzer ──> report
+```
+
+- **LangGraph** orchestration; analyzer modules are auto-discovered and run
+  in parallel; one analyzer failure never kills a scan.
+- **Static track**: 10 pattern families (PII, harmful/jailbreak, injection
+  signatures, link analysis, payload structures, system-prompt leakage,
+  unicode/hidden chars, DoS/abuse, SEO abuse, supply chain). Deterministic
+  hits report directly; ambiguous signatures become `needs_review` candidates.
+- **LLM track**: per-category judging with strict-JSON verdicts
+  (hit / confidence / evidence / reasoning), concurrent across
+  (category × chunk) pairs, with token-usage accounting. Categories already
+  hit by the static track at high confidence are skipped to save tokens.
+- **Chunking**: long conversations are split along message boundaries
+  (paragraph packing + sliding windows with overlap). Every character is
+  judged, no silent truncation, no oversized requests. Multi-chunk hits
+  merge with a corroboration boost.
+- Patterns and prompts are **data-driven**; code only provides detection
+  primitives.
+- **English-first codebase**; Chinese lexicons intentionally remain inside
+  detection regexes — they detect Chinese-language risk payloads.
 
 ## Quick start
 
+Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
+
 ```bash
-uv venv && uv sync --group dev          # environment
-uv run --extra export python tools/export_taxonomy.py   # xlsx -> categories.yaml (committed; rarely needed)
+uv venv && uv sync --group dev    # environment
 
 # static-only scan (no LLM key required)
-slspector scan ../Taxonomy_Building/taxonomy_subset_650.jsonl --limit 20 -o out/
+uv run slspector scan conversations.jsonl --limit 20 -o out/
 
-# static + LLM
-cp .env.example .env                    # fill dmxapi or ollama config
-slspector scan input.jsonl -o out/ --provider dmxapi
+# static + LLM track
+cp .env.example .env              # configure a provider (see below)
+uv run slspector scan conversations.jsonl -o out/ --provider dmxapi
+
+# coverage matrix of all 49 categories
+uv run slspector coverage
 ```
 
 ## LLM providers
 
-Two presets in `.env`:
+Any OpenAI-compatible chat endpoint works via the two presets in `.env`:
 
-- **dmxapi**: OpenAI-compatible (`https://www.dmxapi.cn/v1`), needs `DMXAPI_API_KEY` + `DMXAPI_MODEL`
-- **ollama**: private deployment (`http://<host>:11434/v1`), suited for large batch runs, needs `OLLAMA_MODEL`
+- **dmxapi** preset: set `DMXAPI_BASE_URL`, `DMXAPI_API_KEY`, `DMXAPI_MODEL`
+- **ollama** preset: private deployment, set `OLLAMA_BASE_URL`, `OLLAMA_MODEL`
 
-Set `HTTPS_PROXY` when external access needs a proxy (in-container:
-`http://host.docker.internal:7890`).
-
-## Chunking (long conversations)
-
-Long conversations are split into chunks respecting message boundaries
-(paragraph packing + sliding-window splits for oversized single messages,
-with overlap). Every character is judged — no request can exceed the model
-input budget, and nothing is silently truncated. Multi-chunk hits are merged
-with a corroboration boost. Chunk size: `--chunk-chars` or
-`SLSPECTOR_LLM_CHUNK_CHARS` (default 24000), overlap
-`SLSPECTOR_LLM_CHUNK_OVERLAP` (default 800).
+Tuning knobs (env): `SLSPECTOR_LLM_CONCURRENCY` (default 4),
+`SLSPECTOR_LLM_TIMEOUT` (120s), `SLSPECTOR_LLM_THINKING` (reasoning-effort
+level for models that always reason; pass `low` where supported),
+`SLSPECTOR_LLM_CHUNK_CHARS` (24000), `SLSPECTOR_LLM_CHUNK_OVERLAP` (800).
+Set `HTTPS_PROXY` if egress requires a proxy.
 
 ## Output
 
-- `findings.jsonl`: per-record findings (taxonomy_id / pattern_id / detector /
-  confidence / message location / evidence)
-- `needs_review.jsonl`: manual-verification queue (red-flagged candidate
-  categories are always routed here)
-- `summary.md`: hits by category + coverage matrix (49 categories with status
-  and who-can-test notes)
+- `findings.jsonl` — per-record findings: taxonomy id, pattern id, detector,
+  confidence, message location, evidence, reasoning (LLM), token usage
+- `needs_review.jsonl` — manual-verification queue (candidate categories and
+  low-confidence verdicts are always routed here)
+- `summary.md` — hits by category + the full 49-category coverage matrix
 
-## Coverage (Phase 1)
+## Coverage philosophy
+
+No 100%-detection claims: categories only observable by the platform, or
+only testable with dynamic / multimodal / corpus-level capability, are kept
+in the coverage report with an explicit *who-can-test* note instead of being
+silently pretended.
 
 | status | meaning |
 |--------|---------|
-| implemented | static/LLM detection implemented |
-| candidate | candidate findings only, `needs_review=true` |
-| phase2_llm / phase2_dynamic | Phase 2 extension |
-| future_work | paper future work / discussion |
-| skipped | not labeled (Kevin's I-column: B-C-3, B-A-1, B-CIA-7) |
+| `implemented` | static and/or LLM detection implemented |
+| `candidate` | emits candidates only, always `needs_review=true` |
+| `phase2_dynamic` | requires dynamic refetch capability (planned) |
+| `future_work` | needs multimodal / retrieval / corpus-level capability |
+| `skipped` | judged not labelable from third-party content; documented, not annotated |
 
-See `data/categories.yaml` (per category: `tracks`, `status`, `kevin_note`).
+## Tests
+
+```bash
+uv run --group dev pytest tests/
+```
+
+Mocked-provider tests cover the LLM analyzer logic (hit handling, JSON
+retry, multi-chunk merge), chunking invariants, and the static families.

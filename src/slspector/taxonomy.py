@@ -52,7 +52,7 @@ def coverage_report() -> list[dict[str, Any]]:
                 "tracks": c["tracks"],
                 "status": c["status"],
                 "note": c.get("note") or "",
-                "kevin_note": c.get("kevin_note") or "",
+                "verdict_note": c.get("verdict_note") or "",
                 "who_can_test": _who_can_test(c),
             }
         )
