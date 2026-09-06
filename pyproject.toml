@@ -18,6 +18,8 @@ dependencies = [
     "pyyaml>=6.0",
     "regex>=2024.11",
     "socksio>=1.0.0",
+    "pillow>=12.3.0",
+    "numpy>=2.5.2",
 ]
 
 [project.optional-dependencies]

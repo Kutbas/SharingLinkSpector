@@ -37,10 +37,15 @@ record JSONL ──> build_context ──> [ static families ∥ llm_analyzer ] 
 
 - **LangGraph** orchestration; analyzer modules are auto-discovered and run
   in parallel; one analyzer failure never kills a scan.
-- **Static track**: 10 pattern families (PII, harmful/jailbreak, injection
+- **Static track**: 11 pattern families (PII, harmful/jailbreak, injection
   signatures, link analysis, payload structures, system-prompt leakage,
-  unicode/hidden chars, DoS/abuse, SEO abuse, supply chain). Deterministic
-  hits report directly; ambiguous signatures become `needs_review` candidates.
+  unicode/hidden chars, DoS/abuse, SEO abuse, supply chain, stego imagery).
+  Deterministic hits report directly; ambiguous signatures become `needs_review`
+  candidates. The stego-imagery family covers B-CI-1 retrieval-side poisoning:
+  image references carried by the assistant pipeline (search source bars,
+  tweet cards, doc previews) become candidates; inline `data:image` URIs and
+  locally mirrored URLs (`--image-dir`) undergo deterministic forensics
+  (microtext signal / ELA / optional OCR) — human review decides.
 - **LLM track**: per-category judging with strict-JSON verdicts
   (hit / confidence / evidence / reasoning), concurrent across
   (category × chunk) pairs, with token-usage accounting. Categories already
@@ -83,7 +88,9 @@ Tuning knobs (env): `SLSPECTOR_LLM_CONCURRENCY` (default 4),
 `SLSPECTOR_LLM_TIMEOUT` (120s), `SLSPECTOR_LLM_THINKING` (reasoning-effort
 level for models that always reason; pass `low` where supported),
 `SLSPECTOR_LLM_CHUNK_CHARS` (24000), `SLSPECTOR_LLM_CHUNK_OVERLAP` (800).
-Set `HTTPS_PROXY` if egress requires a proxy.
+Set `HTTPS_PROXY` if egress requires a proxy. Optional image forensics for
+B-CI-1: `--image-dir DIR` points at a local mirror of referenced images
+(named `sha1(url).png/.jpg/...`); the scanner never fetches images itself.
 
 ## Batch reliability
 

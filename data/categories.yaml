@@ -1079,8 +1079,12 @@ categories:
   detection_methods: 【静态】图像取证：对比度/直方图拉伸后 OCR、频域分析暴露微字；【LLM/多模态】判定图像是否含指令性文本及其注入意图——多模态语义判定兼跨语种。
   tracks:
   - static
-  status: future_work
-  note: requires a multimodal provider (image content); text-only LLM track cannot judge
+  status: candidate
+  note: 'Retrieval-side poisoning sub-surface implemented 2026-09-06: assistant-pipeline
+    image references (search source bars, tweet cards, doc previews) and inline
+    data-URIs are screened by deterministic forensics (microtext signal / ELA /
+    optional OCR), always needs_review. Shared-page rendered imagery still requires
+    a fetch pipeline; multimodal semantic judging remains future work.'
   verdict_note: null
 - id: B-CI-2
   model: Model B

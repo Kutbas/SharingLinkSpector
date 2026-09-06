@@ -177,7 +177,11 @@ STATUS_OVERRIDES = {
 
 # Coverage notes for classes that stay out of the LLM track on capability grounds
 CAPABILITY_NOTES = {
-    "B-CI-1": "requires a multimodal provider (image content); text-only LLM track cannot judge",
+    "B-CI-1": (
+        "static stego-imagery screening implemented 2026-09-06 (retrieval-side refs +"
+        " deterministic forensics, needs_review); multimodal semantic judging still"
+        " requires a multimodal provider"
+    ),
     "B-IA-3": "corpus-level clustering (batch layer over the full dataset), not per-record detection",
 }
 
@@ -190,7 +194,7 @@ PLANNED = {
     "B-I-8": "future_work",
     "B-I-9": "phase2_llm",
     "B-I-10": "phase2_llm",
-    "B-CI-1": "future_work",
+    "B-CI-1": "candidate",
     "B-CI-7": "future_work",
     "B-IA-3": "future_work",
     "B-A-2": "implemented",

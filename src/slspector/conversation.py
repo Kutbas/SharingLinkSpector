@@ -182,3 +182,69 @@ def domain_of(url: str) -> str:
     """Return a normalized HTTP(S) hostname, or an empty string for invalid URLs."""
     parsed = urlparse(url if "://" in url else f"https://{url}")
     return (parsed.hostname or "").lower() if parsed.scheme in {"http", "https"} else ""
+
+
+# --- image-reference extraction (B-CI-1 steganography family) ---
+IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico")
+DATA_URI_RE = re.compile(r"data:image/[a-z+.-]+;base64,[A-Za-z0-9+/=]{16,}", re.IGNORECASE)
+
+
+def is_image_url(url: str) -> bool:
+    """Extension-based image heuristic on the URL path."""
+    path = urlparse(url if "://" in url else f"https://{url}").path.lower()
+    return path.endswith(IMAGE_EXTS)
+
+
+def _iter_message_dicts(record: dict):
+    """Yield (index, message_dict) across both tolerated layouts:
+    top-level messages[] and content.messages[] (raw cleaned-dataset shape)."""
+    seen = 0
+    for container in (record.get("messages"), (record.get("content") or {}).get("messages")):
+        if isinstance(container, list):
+            for m in container:
+                if isinstance(m, dict):
+                    yield seen, m
+                    seen += 1
+
+
+def iter_structured_image_refs(record: dict) -> list[dict]:
+    """Image URLs / data-URIs from STRUCTURED message fields (extra / fragments /
+    platform_extra), i.e. imagery the assistant pipeline carried into the answer
+    (source bars, tweet cards, doc-preview panes). Content text is NOT walked here.
+
+    Returns [{value, kind(url|data_uri), path, message_index, role}] deduped per record.
+    """
+    refs: list[dict] = []
+    seen: set[str] = set()
+
+    def _walk(obj, path: str, msg_idx: int, role: str):
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                # NB: do NOT prune nested 'content' keys — Qwen doc-preview image URLs
+                # live under fragments[].meta_data.multi_load.content.subcard_msg...
+                _walk(v, f"{path}.{k}", msg_idx, role)
+        elif isinstance(obj, list):
+            for i, item in enumerate(obj):
+                _walk(item, f"{path}[{i}]", msg_idx, role)
+        elif isinstance(obj, str) and len(obj) < 4096:
+            if DATA_URI_RE.fullmatch(obj.strip()):
+                val = obj.strip()
+                if val not in seen:
+                    seen.add(val)
+                    refs.append(
+                        {"value": val, "kind": "data_uri", "path": path, "message_index": msg_idx, "role": role}
+                    )
+            elif obj.startswith(("http://", "https://")) and is_image_url(obj):
+                if obj not in seen:
+                    seen.add(obj)
+                    refs.append(
+                        {"value": obj, "kind": "url", "path": path, "message_index": msg_idx, "role": role}
+                    )
+
+    for idx, m in _iter_message_dicts(record):
+        role = str(m.get("role") or "").upper()
+        for key in ("extra", "fragments", "platform_extra"):
+            sub = m.get(key)
+            if sub is not None:
+                _walk(sub, f"messages[{idx}].{key}", idx, role)
+    return refs

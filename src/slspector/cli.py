@@ -117,6 +117,7 @@ def scan(
     no_llm: bool = typer.Option(False, "--no-llm"),
     analyzers: str | None = typer.Option(None, "--analyzers"),
     chunk_chars: int | None = typer.Option(None, "--chunk-chars"),
+    image_dir: Path | None = typer.Option(None, "--image-dir", help="Local image mirror dir for B-CI-1 forensics (sha1(url) named files)"),  # noqa: B008
     max_record_chars: int = typer.Option(DEFAULT_MAX_RECORD_CHARS, "--max-record-chars"),
     max_messages: int = typer.Option(DEFAULT_MAX_MESSAGES, "--max-messages"),
     max_links: int = typer.Option(DEFAULT_MAX_LINKS, "--max-links"),
@@ -126,6 +127,8 @@ def scan(
         raise typer.BadParameter("record limits must be positive")
     if chunk_chars:
         os.environ["SLSPECTOR_LLM_CHUNK_CHARS"] = str(chunk_chars)
+    if image_dir is not None:
+        os.environ["SLSPECTOR_IMAGE_DIR"] = str(image_dir.resolve())
     output.mkdir(parents=True, exist_ok=True)
     checkpoint_path = output / "checkpoint.json"
     findings_path, review_path = output / "findings.jsonl", output / "needs_review.jsonl"
