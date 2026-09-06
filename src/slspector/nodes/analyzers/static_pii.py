@@ -25,7 +25,9 @@ ANALYZER_ID = "static_pii"
 _EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 _PHONE_CN = re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)")
 _PHONE_INTL = re.compile(r"(?<!\d)\+\d{1,3}[- ]?\(?\d{2,4}\)?[- ]?\d{3,4}[- ]?\d{3,4}(?!\d)")
-_CN_ID = re.compile(r"(?<!\d)[1-9]\d{5}(?:19|20)\d{2}(?:0[1-9]|1[0-2])(?:[0-2]\d|3[01])\d{3}[\dXx](?!\d)")
+_CN_ID = re.compile(
+    r"(?<!\d)[1-9]\d{5}(?:19|20)\d{2}(?:0[1-9]|1[0-2])(?:[0-2]\d|3[01])\d{3}[\dXx](?!\d)"
+)
 _PASSPORT = re.compile(r"(?<![A-Z0-9])[EGe][0-9]{8}(?![0-9])")
 
 # PI-2 sensitive privacy
@@ -44,14 +46,18 @@ _SECRET_PATTERNS = [
     (r"xox[baprs]-[A-Za-z0-9-]{10,}", "Slack token"),
     (r"AIza[0-9A-Za-z_-]{35}", "Google API key"),
     (r"-----BEGIN [A-Z ]*PRIVATE KEY-----", "PEM private key"),
-    (r"(?i)(api[_-]?key|secret|token|password)\s*[:=]\s*['\"]?[A-Za-z0-9+/_-]{16,}['\"]?", ".env style secret"),
+    (
+        r"(?i)(api[_-]?key|secret|token|password)\s*[:=]\s*['\"]?[A-Za-z0-9+/_-]{16,}['\"]?",
+        ".env style secret",
+    ),
 ]
 _LONG_TOKEN = re.compile(r"[A-Za-z0-9+/]{40,}={0,2}")
 
 # PI-4 technical information
 _PRIVATE_IP = re.compile(
     r"(?<!\d)(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|"
-    r"172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(?!\d)")
+    r"172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(?!\d)"
+)
 _MAC = re.compile(r"(?<![0-9A-Fa-f])(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}(?![0-9A-Fa-f])")
 _UNIX_PATH = re.compile(r"(?<![\w./])/(?:home|root|var|etc|opt|srv|usr)/(?:[\w.-]+/)*[\w.-]+")
 _CONTAINER_ID = re.compile(r"(?<![0-9a-f])[0-9a-f]{12,64}(?![0-9a-f])")
@@ -60,7 +66,9 @@ _CONTAINER_ID = re.compile(r"(?<![0-9a-f])[0-9a-f]{12,64}(?![0-9a-f])")
 _HANDLE = re.compile(r"(?<![\w@])@[A-Za-z0-9_]{3,30}(?![\w@])")
 _PROFILE_URL = re.compile(
     r"https?://(?:twitter|x|github|instagram|facebook|tiktok|weibo|zhihu|bilibili|space\.bilibili)"
-    r"\.com/[@A-Za-z0-9_.-]{2,40}", re.IGNORECASE)
+    r"\.com/[@A-Za-z0-9_.-]{2,40}",
+    re.IGNORECASE,
+)
 
 
 def _shannon_entropy(s: str) -> float:
@@ -98,9 +106,15 @@ def analyze(state: SlspectorState) -> list[Finding]:
     def add(tax, pid, conf, msg, match, needs_review=False, evidence=None):
         findings.append(
             make_finding(
-                taxonomy_id=tax, pattern_id=pid, confidence=conf, message=msg,
-                state=state, pos=match.start(), matched_text=match.group(0),
-                needs_review=needs_review, evidence=evidence or {},
+                taxonomy_id=tax,
+                pattern_id=pid,
+                confidence=conf,
+                message=msg,
+                state=state,
+                pos=match.start(),
+                matched_text=match.group(0),
+                needs_review=needs_review,
+                evidence=evidence or {},
             )
         )
 
@@ -131,9 +145,15 @@ def analyze(state: SlspectorState) -> list[Finding]:
     for m in _LONG_TOKEN.finditer(text):
         tok = m.group(0)
         if _shannon_entropy(tok) > 4.5:
-            add("A-C-3", "PI-3", 0.5, "high-entropy token (suspected key/encoded payload)",
-                m, needs_review=True,
-                evidence={"entropy": round(_shannon_entropy(tok), 2), "length": len(tok)})
+            add(
+                "A-C-3",
+                "PI-3",
+                0.5,
+                "high-entropy token (suspected key/encoded payload)",
+                m,
+                needs_review=True,
+                evidence={"entropy": round(_shannon_entropy(tok), 2), "length": len(tok)},
+            )
 
     # PI-4 A-C-4
     for m in _PRIVATE_IP.finditer(text):

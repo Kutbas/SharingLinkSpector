@@ -27,13 +27,28 @@ _HIGH_RISK_LEXICON = re.compile(
 # HJ-2 A-I-1 jailbreak templates
 _JAILBREAK_PATTERNS = [
     (r"\bDAN\b.{0,40}(do anything now|模式|mode)", "DAN mode"),
-    (r"(?i)ignore (all|previous|above) (instructions|rules|restrictions)", "instruction-override jailbreak (EN)"),
-    (r"忽略(以上|之前|之前所有|上述)(的)?(指令|规则|限制|设定)", "instruction-override jailbreak (CN)"),
-    (r"(?i)(you are|act as|pretend to be).{0,30}(no restrictions|unrestricted|without any (limits|restrictions)|不受限|无限制)", "unrestricted roleplay"),
+    (
+        r"(?i)ignore (all|previous|above) (instructions|rules|restrictions)",
+        "instruction-override jailbreak (EN)",
+    ),
+    (
+        r"忽略(以上|之前|之前所有|上述)(的)?(指令|规则|限制|设定)",
+        "instruction-override jailbreak (CN)",
+    ),
+    (
+        r"(?i)(you are|act as|pretend to be).{0,30}(no restrictions|unrestricted|without any (limits|restrictions)|不受限|无限制)",
+        "unrestricted roleplay",
+    ),
     (r"(?i)jailbreak (prompt|mode)", "explicit jailbreak mention"),
     (r"(?i)developer mode|godmode|admin mode.{0,20}(enabled|开启)", "developer-mode family"),
-    (r"(?i)hypothetical(ly)?.{0,40}(no rules|anything goes)|思想实验.{0,30}(无限制|没有规则)", "hypothetical-scenario jailbreak"),
-    (r"(?i)(你现在是|扮演)(一个)?(没有|无)(道德|伦理|安全)(限制|约束|审查)", "de-constrained roleplay (CN)"),
+    (
+        r"(?i)hypothetical(ly)?.{0,40}(no rules|anything goes)|思想实验.{0,30}(无限制|没有规则)",
+        "hypothetical-scenario jailbreak",
+    ),
+    (
+        r"(?i)(你现在是|扮演)(一个)?(没有|无)(道德|伦理|安全)(限制|约束|审查)",
+        "de-constrained roleplay (CN)",
+    ),
     (r"(?i)rule bypass|安全绕过|绕过(安全|内容|合规)(策略|审查|过滤)", "safety-bypass wording"),
 ]
 _JB_SUCCESS_MARK = re.compile(
@@ -57,26 +72,48 @@ def analyze(state: SlspectorState) -> list[Finding]:
     from slspector.nodes.analyzers.common import make_finding
 
     for m in _HIGH_RISK_LEXICON.finditer(text):
-        findings.append(make_finding(
-            taxonomy_id="A-C-6", pattern_id="HJ-1", confidence=0.5,
-            message="High-risk personal-safety signal (fallback; LLM primary)", state=state,
-            pos=m.start(), matched_text=m.group(0), needs_review=True))
+        findings.append(
+            make_finding(
+                taxonomy_id="A-C-6",
+                pattern_id="HJ-1",
+                confidence=0.5,
+                message="High-risk personal-safety signal (fallback; LLM primary)",
+                state=state,
+                pos=m.start(),
+                matched_text=m.group(0),
+                needs_review=True,
+            )
+        )
 
     for pat, name in _JAILBREAK_PATTERNS:
         for m in re.finditer(pat, text, re.IGNORECASE):
             # boost confidence when a "successful demonstration" appears within 500 chars after
             after = text[m.end() : m.end() + 500]
             conf = 0.8 if _JB_SUCCESS_MARK.search(after) else 0.6
-            findings.append(make_finding(
-                taxonomy_id="A-I-1", pattern_id="HJ-2", confidence=conf,
-                message=f"Jailbreak template: {name}", state=state,
-                pos=m.start(), matched_text=m.group(0)))
+            findings.append(
+                make_finding(
+                    taxonomy_id="A-I-1",
+                    pattern_id="HJ-2",
+                    confidence=conf,
+                    message=f"Jailbreak template: {name}",
+                    state=state,
+                    pos=m.start(),
+                    matched_text=m.group(0),
+                )
+            )
 
     for m in _HARMFUL_LEXICON.finditer(text):
-        findings.append(make_finding(
-            taxonomy_id="B-I-1", pattern_id="HJ-3", confidence=0.55,
-            message="Harmful-content keyword (fallback; LLM primary)", state=state,
-            pos=m.start(), matched_text=m.group(0)))
+        findings.append(
+            make_finding(
+                taxonomy_id="B-I-1",
+                pattern_id="HJ-3",
+                confidence=0.55,
+                message="Harmful-content keyword (fallback; LLM primary)",
+                state=state,
+                pos=m.start(),
+                matched_text=m.group(0),
+            )
+        )
 
     return findings
 

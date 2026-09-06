@@ -68,8 +68,9 @@ def _parse_json(reply: str) -> dict:
     return obj
 
 
-def _judge_chunk(cfg: ProviderConfig, cid: str, prompt: str, chunk: Chunk,
-                 title: str | None) -> tuple[dict, dict]:
+def _judge_chunk(
+    cfg: ProviderConfig, cid: str, prompt: str, chunk: Chunk, title: str | None
+) -> tuple[dict, dict]:
     """Judge one chunk for one category; returns (verdict, token_usage)."""
     client = _thread_client(cfg)
     model = cfg.model
@@ -95,18 +96,36 @@ def _judge_chunk(cfg: ProviderConfig, cid: str, prompt: str, chunk: Chunk,
             result = _parse_json(resp.choices[0].message.content or "")
             usage = {
                 "prompt_tokens": getattr(getattr(resp, "usage", None), "prompt_tokens", 0) or 0,
-                "completion_tokens": getattr(getattr(resp, "usage", None), "completion_tokens", 0) or 0,
+                "completion_tokens": getattr(getattr(resp, "usage", None), "completion_tokens", 0)
+                or 0,
             }
             return result, usage
         except Exception as exc:  # noqa: BLE001
             last_err = exc
             time.sleep(1.5 * (attempt + 1))
             messages = messages[:2] + [
-                {"role": "user", "content": "Your previous output could not be parsed. "
-                 "Output strict JSON only: {\"hit\": bool, \"confidence\": 0-1, "
-                 "\"evidence\": \"...\", \"reasoning\": \"...\"}"}
+                {
+                    "role": "user",
+                    "content": "Your previous output could not be parsed. "
+                    'Output strict JSON only: {"hit": bool, "confidence": 0-1, '
+                    '"evidence": "...", "reasoning": "..."}',
+                }
             ]
     raise _LLMUnavailable(f"{cid}@chunk{chunk.index}: {last_err}")
+
+
+def _locate_finding(messages: list[dict], verdict: dict, chunks: list[Chunk]) -> MessageLocation:
+    evidence = str(verdict.get("evidence", ""))
+    matches = []
+    for mi, msg in enumerate(messages):
+        body = str(msg.get("content") or "")
+        start = body.find(evidence) if evidence else -1
+        if start >= 0:
+            matches.append((mi, str(msg.get("role") or ""), start, start + len(evidence)))
+    if len(matches) == 1:
+        mi, role, start, end = matches[0]
+        return MessageLocation(mi, role, start, end, evidence[:200])
+    return MessageLocation(snippet=evidence[:200])
 
 
 def analyze(state: SlspectorState, cfg: ProviderConfig) -> tuple[list[Finding], list[dict]]:
@@ -126,21 +145,22 @@ def analyze(state: SlspectorState, cfg: ProviderConfig) -> tuple[list[Finding], 
     eligible: list[str] = []
     for cid, cat in cats.items():
         if static_hits.get(cid, 0.0) >= STATIC_HIT_SKIP_CONF:
-            statuses.append({"analyzer_id": ANALYZER_ID, "category": cid,
-                             "status": "skipped_static_hit"})
+            statuses.append(
+                {"analyzer_id": ANALYZER_ID, "category": cid, "status": "skipped_static_hit"}
+            )
         else:
             eligible.append(cid)
 
     # judge all (category, chunk) pairs concurrently
     tasks = [(cid, chunk) for cid in eligible for chunk in chunks]
     per_cat: dict[str, list[dict]] = {}
-    errors: dict[str, str] = {}
+    errors: dict[str, list[str]] = {}
+    successes: dict[str, int] = {}
     usage_total = {"prompt_tokens": 0, "completion_tokens": 0, "calls": 0}
     t0 = time.monotonic()
     with ThreadPoolExecutor(max_workers=max(1, cfg.concurrency)) as pool:
         futures = {
-            pool.submit(_judge_chunk, cfg, cid, cats[cid]["llm"]["prompt"],
-                        chunk, title): cid
+            pool.submit(_judge_chunk, cfg, cid, cats[cid]["llm"]["prompt"], chunk, title): cid
             for cid, chunk in tasks
         }
         for fut in as_completed(futures):
@@ -148,18 +168,26 @@ def analyze(state: SlspectorState, cfg: ProviderConfig) -> tuple[list[Finding], 
             try:
                 result, usage = fut.result()
             except _LLMUnavailable as exc:
-                errors[cid] = str(exc)[:200]
+                errors.setdefault(cid, []).append(str(exc)[:200])
                 continue
             usage_total["prompt_tokens"] += usage["prompt_tokens"]
             usage_total["completion_tokens"] += usage["completion_tokens"]
             usage_total["calls"] += 1
+            successes[cid] = successes.get(cid, 0) + 1
             if result.get("hit"):
                 per_cat.setdefault(cid, []).append(result)
 
     for cid in eligible:
         if cid in errors:
-            statuses.append({"analyzer_id": ANALYZER_ID, "category": cid,
-                             "status": "error", "detail": errors[cid]})
+            statuses.append(
+                {
+                    "analyzer_id": ANALYZER_ID,
+                    "category": cid,
+                    "status": "partial" if successes.get(cid) else "failed",
+                    "error_count": len(errors[cid]),
+                    "detail": "; ".join(errors[cid]),
+                }
+            )
             continue
         cat = cats[cid]
         per_chunk = per_cat.get(cid, [])
@@ -170,35 +198,49 @@ def analyze(state: SlspectorState, cfg: ProviderConfig) -> tuple[list[Finding], 
             if corroborated:
                 conf = min(0.98, conf * MULTI_CHUNK_BOOST)
             cat_status = cat.get("status")
-            findings.append(Finding(
-                taxonomy_id=cid,
-                pattern_id="LLM-1",
-                detector="llm",
-                confidence=conf,
-                message=f"LLM verdict: {cat.get('leaf_en', cid)}",
-                location=MessageLocation(snippet=str(best.get("evidence", ""))[:200]),
-                matched_text=str(best.get("evidence", ""))[:200],
-                needs_review=(cat_status == "candidate") or conf <= 0.5,
-                reasoning=str(best.get("reasoning", ""))[:300],
-                analyzer_id=ANALYZER_ID,
-                evidence={
-                    "model": cfg.model,
-                    "chunks_hit": len(per_chunk),
-                    "chunks_total": len(chunks),
-                    "corroborated": corroborated,
-                },
-            ))
-        statuses.append({
-            "analyzer_id": ANALYZER_ID, "category": cid, "status": "ok",
-            "hit": bool(per_chunk), "chunks": len(chunks),
-        })
-    statuses.append({
-        "analyzer_id": ANALYZER_ID, "status": "usage",
-        "detail": f"{usage_total['calls']} calls, "
-                  f"{usage_total['prompt_tokens']} in / {usage_total['completion_tokens']} out tokens, "
-                  f"{time.monotonic() - t0:.1f}s",
-        **usage_total,
-    })
+            location = _locate_finding(messages, best, chunks)
+            findings.append(
+                Finding(
+                    taxonomy_id=cid,
+                    pattern_id="LLM-1",
+                    detector="llm",
+                    confidence=conf,
+                    message=f"LLM verdict: {cat.get('leaf_en', cid)}",
+                    location=location,
+                    matched_text=str(best.get("evidence", ""))[:200],
+                    needs_review=(cat_status == "candidate") or conf <= 0.5,
+                    reasoning=str(best.get("reasoning", ""))[:300],
+                    analyzer_id=ANALYZER_ID,
+                    evidence={
+                        "model": cfg.model,
+                        "location_status": "resolved"
+                        if location.message_index is not None
+                        else "unresolved",
+                        "chunks_hit": len(per_chunk),
+                        "chunks_total": len(chunks),
+                        "corroborated": corroborated,
+                    },
+                )
+            )
+        statuses.append(
+            {
+                "analyzer_id": ANALYZER_ID,
+                "category": cid,
+                "status": "ok",
+                "hit": bool(per_chunk),
+                "chunks": len(chunks),
+            }
+        )
+    statuses.append(
+        {
+            "analyzer_id": ANALYZER_ID,
+            "status": "usage",
+            "detail": f"{usage_total['calls']} calls, "
+            f"{usage_total['prompt_tokens']} in / {usage_total['completion_tokens']} out tokens, "
+            f"{time.monotonic() - t0:.1f}s",
+            **usage_total,
+        }
+    )
     return findings, statuses
 
 
@@ -207,11 +249,21 @@ def node(state: SlspectorState) -> AnalyzerNodeResponse:
 
     cfg = state.get("_provider_cfg") or resolve_provider(state.get("provider"))
     if cfg is None:
-        return {"findings": [], "analyzer_status": [
-            {"analyzer_id": ANALYZER_ID, "status": "skipped",
-             "detail": "no provider configured"}]}
-    findings, statuses = analyze(state, cfg)
-    return {"findings": findings,
+        return {
+            "findings": [],
             "analyzer_status": [
-                {"analyzer_id": ANALYZER_ID, "status": "ok",
-                 "detail": f"{len(findings)} llm findings"}] + statuses}
+                {
+                    "analyzer_id": ANALYZER_ID,
+                    "status": "skipped",
+                    "detail": "no provider configured",
+                }
+            ],
+        }
+    findings, statuses = analyze(state, cfg)
+    return {
+        "findings": findings,
+        "analyzer_status": [
+            {"analyzer_id": ANALYZER_ID, "status": "ok", "detail": f"{len(findings)} llm findings"}
+        ]
+        + statuses,
+    }

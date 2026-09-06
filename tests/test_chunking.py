@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from itertools import pairwise
+
 from slspector.chunking import chunk_conversation, chunk_limits
 
 
@@ -34,7 +36,7 @@ def test_oversize_single_paragraph_hard_split():
     assert len(chunks) > 4
     assert all(c.truncated for c in chunks)
     # sliding-window overlap: consecutive chunks share content
-    for a, b in zip(chunks, chunks[1:]):
+    for a, b in pairwise(chunks):
         assert a.text[-100:] in b.text
 
 

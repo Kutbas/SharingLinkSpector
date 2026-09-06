@@ -22,7 +22,7 @@ AI 对话分享链接风险**标注工具**。
   CAPEC、CWE、OWASP），而非自创。
 - 每类含：检测轨道（static / llm / dynamic / metadata / platform）、状态、
   定义、检测要点与英文判定提示词。
-- 31 类具备确定性静态检测；40 类具备 LLM 判定提示词；其余需要动态、
+- 45 类包含静态检测轨；40 类具备 LLM 判定提示词；其余需要动态、
   多模态或平台侧能力，在覆盖率报告中如实标注（见"覆盖率哲学"）。
 
 ## 架构
@@ -74,6 +74,14 @@ uv run slspector coverage
 `SLSPECTOR_LLM_TIMEOUT`（120s）、`SLSPECTOR_LLM_THINKING`（强制思考模型的
 推理档位，支持处传 `low`）、`SLSPECTOR_LLM_CHUNK_CHARS`（24000）、
 `SLSPECTOR_LLM_CHUNK_OVERLAP`（800）。出网需代理时设置 `HTTPS_PROXY`。
+
+## 批处理可靠性
+
+`scan` 会持久化 JSONL 输出与 `checkpoint.json`。中断后使用 `--resume -o out/`
+续跑；续跑前不要修改输入 JSONL。`needs_review.jsonl` 为**finding 级**记录
+（`share_id`、`platform`、`finding`），`findings.jsonl` 为记录级结果。输入限制可通过
+`--max-record-chars`、`--max-messages` 与 `--max-links` 配置。退出码：`0` 完成、
+`2` 部分完成、`1` 失败。
 
 ## 输出
 

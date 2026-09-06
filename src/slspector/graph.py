@@ -26,7 +26,9 @@ def _guard(analyzer_id: str, node_func):
         except Exception as exc:  # noqa: BLE001
             logger.error("analyzer %s failed: %s", analyzer_id, exc)
             status: AnalyzerStatus = {
-                "analyzer_id": analyzer_id, "status": "error", "detail": str(exc)[:300],
+                "analyzer_id": analyzer_id,
+                "status": "error",
+                "detail": str(exc)[:300],
             }
             return {"findings": [], "analyzer_status": [status]}
 

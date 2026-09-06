@@ -1,181 +1,276 @@
-"""slspector CLI: scan / coverage.
-
-Usage:
-  slspector scan <input.jsonl> [--limit 20] [--no-llm] [--provider dmxapi] [-o out/]
-  slspector coverage
-"""
+"""Command-line batch scanning with durable checkpoints."""
 
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 import time
 from collections import Counter
+from collections.abc import Iterator
 from pathlib import Path
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
-from slspector import taxonomy
+from slspector import conversation, taxonomy
 from slspector.graph import create_graph
 from slspector.nodes.report import report
 from slspector.providers import resolve_provider
 
-app = typer.Typer(add_completion=False,
-                  help="SharingLinkSpector: sharing-link risk annotation (static + LLM dual track)")
+app = typer.Typer(add_completion=False, help="SharingLinkSpector: sharing-link risk annotation")
 console = Console()
+DEFAULT_MAX_RECORD_CHARS = 2_000_000
+DEFAULT_MAX_MESSAGES = 2_000
+DEFAULT_MAX_LINKS = 10_000
 
 
-def _iter_records(path: Path, limit: int | None, offset: int = 0):
-    n = 0
-    with path.open(encoding="utf-8") as f:
-        for i, line in enumerate(f):
-            if i < offset:
+def _atomic_write(path: Path, content: str) -> None:
+    """Replace a small metadata file atomically after flushing it to disk."""
+    fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, path)
+    except BaseException:
+        Path(temp_name).unlink(missing_ok=True)
+        raise
+
+
+def _append_jsonl(handle, item: dict) -> None:
+    handle.write(json.dumps(item, ensure_ascii=False) + "\n")
+    handle.flush()
+    os.fsync(handle.fileno())
+
+
+def _iter_records(path: Path, start_line: int = 0) -> Iterator[tuple[int, dict | None, str | None]]:
+    with path.open(encoding="utf-8") as handle:
+        for line_number, line in enumerate(handle):
+            if line_number < start_line or not line.strip():
                 continue
-            line = line.strip()
-            if not line:
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError as exc:
+                yield line_number, None, f"line {line_number + 1}: invalid JSON: {exc.msg}"
                 continue
-            yield json.loads(line)
-            n += 1
-            if limit and n >= limit:
-                return
+            if not isinstance(record, dict):
+                yield line_number, None, f"line {line_number + 1}: top-level JSON must be an object"
+                continue
+            messages = record.get("messages", [])
+            if not isinstance(messages, list) or any(
+                not isinstance(message, dict) for message in messages
+            ):
+                yield (
+                    line_number,
+                    None,
+                    f"line {line_number + 1}: messages must be an array of objects",
+                )
+                continue
+            yield line_number, record, None
+
+
+def _record_error(
+    record: dict, max_record_chars: int, max_messages: int, max_links: int
+) -> str | None:
+    messages = record.get("messages", [])
+    if len(messages) > max_messages:
+        return f"record exceeds max messages ({len(messages)} > {max_messages})"
+    total_chars = sum(len(str(message.get("content") or "")) for message in messages)
+    if total_chars > max_record_chars:
+        return f"record exceeds max chars ({total_chars} > {max_record_chars})"
+    normalized = conversation.normalize_record(record)
+    full_text, _ = conversation.build_full_text(normalized["messages"])
+    if len(conversation.extract_links(full_text)) > max_links:
+        return f"record exceeds max links ({max_links})"
+    return None
+
+
+def _checkpoint(
+    path: Path, next_line: int, input_errors: int, records: int, completed: bool
+) -> None:
+    _atomic_write(
+        path,
+        json.dumps(
+            {
+                "next_line": next_line,
+                "input_errors": input_errors,
+                "records": records,
+                "completed": completed,
+            },
+            ensure_ascii=False,
+        ),
+    )
 
 
 @app.command()
 def scan(
-    input_path: Path = typer.Argument(..., exists=True, help="JSONL file (unified schema)"),
-    output: Path = typer.Option(Path("out"), "-o", help="output directory"),
-    limit: int = typer.Option(None, "--limit", help="max records to scan"),
-    offset: int = typer.Option(0, "--offset", help="skip first N records"),
-    provider: str = typer.Option(
-        None, "--provider", help="dmxapi | ollama | none (default: .env)"),
-    model: str = typer.Option(None, "--model", help="override provider default model"),
-    no_llm: bool = typer.Option(False, "--no-llm", help="static detection only"),
-    analyzers: str = typer.Option(None, "--analyzers", help="run only these analyzers (comma-separated)"),
-    chunk_chars: int = typer.Option(None, "--chunk-chars",
-                                    help="LLM chunk size in chars (default 24000, env SLSPECTOR_LLM_CHUNK_CHARS)"),
-):
-    """Scan conversation records; writes findings.jsonl / needs_review.jsonl / summary.md."""
-    import os
-
+    input_path: Path = typer.Argument(..., exists=True, help="JSONL file"),  # noqa: B008
+    output: Path = typer.Option(Path("out"), "-o", help="Output directory"),  # noqa: B008
+    limit: int | None = typer.Option(None, "--limit", help="Maximum valid records"),
+    offset: int = typer.Option(0, "--offset", help="Skip source lines"),
+    resume: bool = typer.Option(False, "--resume", help="Resume from output/checkpoint.json"),
+    provider: str | None = typer.Option(None, "--provider"),
+    model: str | None = typer.Option(None, "--model"),
+    no_llm: bool = typer.Option(False, "--no-llm"),
+    analyzers: str | None = typer.Option(None, "--analyzers"),
+    chunk_chars: int | None = typer.Option(None, "--chunk-chars"),
+    max_record_chars: int = typer.Option(DEFAULT_MAX_RECORD_CHARS, "--max-record-chars"),
+    max_messages: int = typer.Option(DEFAULT_MAX_MESSAGES, "--max-messages"),
+    max_links: int = typer.Option(DEFAULT_MAX_LINKS, "--max-links"),
+) -> None:
+    """Write record-level findings and finding-level needs_review JSONL output."""
+    if min(max_record_chars, max_messages, max_links) < 1:
+        raise typer.BadParameter("record limits must be positive")
     if chunk_chars:
         os.environ["SLSPECTOR_LLM_CHUNK_CHARS"] = str(chunk_chars)
-
+    output.mkdir(parents=True, exist_ok=True)
+    checkpoint_path = output / "checkpoint.json"
+    findings_path, review_path = output / "findings.jsonl", output / "needs_review.jsonl"
+    start_line = offset
+    input_errors = 0
+    if resume:
+        if not checkpoint_path.exists():
+            raise typer.BadParameter("--resume requires output/checkpoint.json")
+        checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+        start_line = max(start_line, int(checkpoint.get("next_line", 0)))
+        input_errors = int(checkpoint.get("input_errors", 0))
+        prior_records = int(checkpoint.get("records", 0))
+    else:
+        for path in (findings_path, review_path, checkpoint_path, output / "summary.md"):
+            path.unlink(missing_ok=True)
     use_llm = not no_llm
     cfg = resolve_provider(provider, model) if use_llm else None
     if use_llm and cfg is None:
-        console.print("[yellow]LLM provider not configured / no API key; falling back to static-only[/yellow]")
+        console.print("[yellow]LLM provider not configured; falling back to static-only[/yellow]")
         use_llm = False
-    analyzer_filter = {a.strip() for a in analyzers.split(",")} if analyzers else None
-
-    graph = create_graph(use_llm=use_llm, analyzer_filter=analyzer_filter)
-    output.mkdir(parents=True, exist_ok=True)
-
-    findings_path = output / "findings.jsonl"
-    review_path = output / "needs_review.jsonl"
-    n_records = 0
-    n_findings = 0
-    n_review = 0
-    usage_acc = {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0}
-    cat_counter: Counter = Counter()
-    plat_counter: Counter = Counter()
-    t0 = time.monotonic()
-
-    usage_path = output / "llm_usage.jsonl" if use_llm else None
-    with findings_path.open("w", encoding="utf-8") as ff, review_path.open(
-        "w", encoding="utf-8"
-    ) as rf, (usage_path.open("w", encoding="utf-8") if usage_path else open("/dev/null", "w")) as uf:
-        for record in _iter_records(input_path, limit, offset):
+    graph = create_graph(
+        use_llm=use_llm,
+        analyzer_filter={item.strip() for item in analyzers.split(",")} if analyzers else None,
+    )
+    prior_records = locals().get("prior_records", 0)
+    records = findings = reviews = 0
+    counters: Counter = Counter()
+    platforms: Counter = Counter()
+    started = time.monotonic()
+    mode = "a" if resume else "w"
+    with (
+        findings_path.open(mode, encoding="utf-8") as findings_file,
+        review_path.open(mode, encoding="utf-8") as review_file,
+    ):
+        for line_number, record, error in _iter_records(input_path, start_line):
+            if error is None and record is not None:
+                error = _record_error(record, max_record_chars, max_messages, max_links)
+            if error:
+                input_errors += 1
+                console.print(f"[red]input error[/red]: {error}")
+                _checkpoint(
+                    checkpoint_path, line_number + 1, input_errors, prior_records + records, False
+                )
+                continue
             state = graph.invoke(
                 {"record": record, "use_llm": use_llm, "provider": cfg.name if cfg else None}
             )
             result = report(state)
-            ff.write(json.dumps(result, ensure_ascii=False) + "\n")
-            if use_llm:
-                for st in state.get("analyzer_status") or []:
-                    if st.get("status") == "usage":
-                        for k in usage_acc:
-                            usage_acc[k] += st.get(k, 0)
-                uf.write(json.dumps({
-                    "share_id": result["share_id"],
-                    "finding_count": result["finding_count"],
-                    **next((st for st in state.get("analyzer_status") or []
-                            if st.get("status") == "usage"), {}),
-                }, ensure_ascii=False) + "\n")
-            for f in result["findings"]:
-                cat_counter[f["taxonomy_id"]] += 1
-            if result["needs_review_count"]:
-                rf.write(json.dumps(result, ensure_ascii=False) + "\n")
-            n_records += 1
-            n_findings += result["finding_count"]
-            n_review += result["needs_review_count"]
-            plat_counter[result["platform"]] += 1
-            step = 1 if use_llm else 10
-            if n_records % step == 0:
-                extra = (f", llm {usage_acc['calls']} calls / "
-                         f"{usage_acc['prompt_tokens'] + usage_acc['completion_tokens']} tok"
-                         ) if use_llm else ""
-                console.print(
-                    f"[dim]{n_records} records, {n_findings} findings, "
-                    f"{time.monotonic() - t0:.1f}s{extra}[/dim]"
-                )
-
-    if usage_path:
-        usage_path.write_text((usage_path.read_text(encoding="utf-8") if usage_path.exists() else "") +
-                               json.dumps(usage_acc, ensure_ascii=False) + "\n", encoding="utf-8")
-
-    _write_summary(output, n_records, n_findings, n_review, cat_counter, plat_counter,
-                   time.monotonic() - t0, cfg.model if cfg else None,
-                   usage_acc if use_llm else None)
-    console.print(
-        f"[green]done[/green]: {n_records} records -> {n_findings} findings "
-        f"({n_review} needs_review) in {time.monotonic() - t0:.1f}s\n"
-        f"output: {findings_path}\n        {review_path}\n        {output / 'summary.md'}"
+            _append_jsonl(findings_file, result)
+            for finding in result["findings"]:
+                counters[finding["taxonomy_id"]] += 1
+                if finding["needs_review"]:
+                    _append_jsonl(
+                        review_file,
+                        {
+                            "share_id": result["share_id"],
+                            "platform": result["platform"],
+                            "finding": finding,
+                        },
+                    )
+                    reviews += 1
+            records += 1
+            findings += result["finding_count"]
+            platforms[result["platform"]] += 1
+            _checkpoint(
+                checkpoint_path, line_number + 1, input_errors, prior_records + records, False
+            )
+            if limit and records >= limit:
+                break
+    completed = not limit or records < limit
+    _checkpoint(
+        checkpoint_path,
+        line_number + 1 if "line_number" in locals() else start_line,
+        input_errors,
+        prior_records + records,
+        completed,
     )
+    status = (
+        "failed"
+        if not (prior_records + records) and input_errors
+        else "partial"
+        if input_errors
+        else "complete"
+    )
+    _write_summary(
+        output,
+        records,
+        findings,
+        reviews,
+        counters,
+        platforms,
+        time.monotonic() - started,
+        status,
+        input_errors,
+    )
+    console.print(
+        f"[green]{status}[/green]: {records} records, {findings} findings, {reviews} review findings"
+    )
+    if status == "failed":
+        raise typer.Exit(1)
+    if status == "partial":
+        raise typer.Exit(2)
 
 
-def _write_summary(out: Path, n_records, n_findings, n_review, cat_counter, plat_counter,
-                   elapsed, model, usage=None):
+def _write_summary(
+    out: Path,
+    records: int,
+    findings: int,
+    reviews: int,
+    counters: Counter,
+    platforms: Counter,
+    elapsed: float,
+    status: str,
+    input_errors: int,
+) -> None:
     lines = [
         "# SharingLinkSpector Scan Summary",
         "",
-        f"- records: {n_records} (platforms: {dict(plat_counter)})",
-        f"- findings: {n_findings}, needs_review: {n_review}",
-        f"- elapsed: {elapsed:.1f}s" + (f", LLM: {model}" if model else ", static-only"),
+        f"- scan status: {status}",
+        f"- records: {records} (platforms: {dict(platforms)})",
+        f"- findings: {findings}, needs_review findings: {reviews}",
+        "- needs_review.jsonl: finding-level records with share_id, platform, and finding",
+        f"- input errors: {input_errors}",
+        f"- elapsed: {elapsed:.1f}s",
+        "",
+        "## Hits by category",
     ]
-    if usage:
-        lines.append(
-            f"- LLM usage: {usage['calls']} calls, "
-            f"{usage['prompt_tokens']} in / {usage['completion_tokens']} out tokens"
-        )
-    lines += ["", "## Hits by category", "", "| ID | Category | hits |", "|----|----------|------|"]
-    for cid, n in cat_counter.most_common():
-        cat = taxonomy.get(cid) or {}
-        lines.append(f"| {cid} | {cat.get('leaf_en', '')} | {n} |")
-    lines += ["", "## Coverage (49 categories, who can test what)", "",
-              "| ID | Category | status | tracks | notes |", "|----|----------|--------|--------|-------|"]
-    for row in taxonomy.coverage_report():
-        note = row["note"] or row["who_can_test"]
-        lines.append(
-            f"| {row['id']} | {row['leaf_en']} | {row['status']} | "
-            f"{'/'.join(row['tracks'])} | {note[:90]} |"
-        )
-    (out / "summary.md").write_text("\n".join(lines), encoding="utf-8")
+    lines.extend(f"- {category}: {count}" for category, count in counters.most_common())
+    _atomic_write(out / "summary.md", "\n".join(lines) + "\n")
 
 
 @app.command()
-def coverage():
-    """Print the 49-category coverage matrix."""
+def coverage() -> None:
     table = Table(title="Taxonomy v5 Coverage")
-    for col in ("ID", "Category", "status", "tracks", "who can test / notes"):
-        table.add_column(col)
+    for column in ("ID", "Category", "status", "tracks", "who can test / notes"):
+        table.add_column(column)
     for row in taxonomy.coverage_report():
         table.add_row(
-            row["id"], row["leaf_en"], row["status"], "/".join(row["tracks"]),
+            row["id"],
+            row["leaf_en"],
+            row["status"],
+            "/".join(row["tracks"]),
             (row["note"] or row["who_can_test"])[:70],
         )
     console.print(table)
-    console.print(dict(taxonomy.status_counts()))
 
 
 if __name__ == "__main__":

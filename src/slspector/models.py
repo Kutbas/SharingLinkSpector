@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 @dataclass(slots=True)
 class MessageLocation:
     """Finding location within the conversation. message_index=None for record-level
-detections (metadata/attachments)."""
+    detections (metadata/attachments)."""
 
     message_index: int | None = None
     role: str | None = None
@@ -22,11 +22,11 @@ detections (metadata/attachments)."""
 class Finding:
     """One risk annotation. Label-only, no scoring: no aggregate risk score is computed."""
 
-    taxonomy_id: str          # A-C-1 / B-CI-8 / ...
-    pattern_id: str           # pattern number within family, e.g. PI-1 / LINK-3
-    detector: str             # static / llm
-    confidence: float         # 0~1
-    message: str              # short pattern name (English)
+    taxonomy_id: str  # A-C-1 / B-CI-8 / ...
+    pattern_id: str  # pattern number within family, e.g. PI-1 / LINK-3
+    detector: str  # static / llm
+    confidence: float  # 0~1
+    message: str  # short pattern name (English)
     location: MessageLocation = field(default_factory=MessageLocation)
     matched_text: str | None = None
     context: str | None = None

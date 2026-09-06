@@ -17,13 +17,25 @@ ANALYZER_ID = "static_system_prompt_leak"
 
 # SPL-1 system-prompt component fingerprints
 _SYS_PROMPT_MARKS = [
-    (r"(?i)^.{0,40}you are (claude|chatgpt|gpt|gemini|grok|deepseek|qwen|kimi|an? ai|a large language)", "model self-description"),
+    (
+        r"(?i)^.{0,40}you are (claude|chatgpt|gpt|gemini|grok|deepseek|qwen|kimi|an? ai|a large language)",
+        "model self-description",
+    ),
     (r"(?i)you are (an? )?(helpful|harmless|innocent|expert|assistant)", "persona-setup phrase"),
     (r"(?i)<system>|system prompt\s*[::]|系统提示词\s*[：:]", "explicit system-prompt marker"),
-    (r"(?i)(you must|you should always|never reveal|do not disclose).{0,60}(instructions|system prompt|your rules)", "behavior-constraint clause"),
-    (r"(?i)知识截止|knowledge cutoff.{0,30}(date|时间)|训练数据(截止|时间)", "platform-template marker"),
+    (
+        r"(?i)(you must|you should always|never reveal|do not disclose).{0,60}(instructions|system prompt|your rules)",
+        "behavior-constraint clause",
+    ),
+    (
+        r"(?i)知识截止|knowledge cutoff.{0,30}(date|时间)|训练数据(截止|时间)",
+        "platform-template marker",
+    ),
     (r"(?i)(可用工具|available tools?)\s*[：:].{0,30}(function|工具|tool)_?", "tool-schema marker"),
-    (r"(?i)as an ai (language )?model,? i (can'?t|cannot|don'?t have)", "platform disclaimer phrase"),
+    (
+        r"(?i)as an ai (language )?model,? i (can'?t|cannot|don'?t have)",
+        "platform disclaimer phrase",
+    ),
 ]
 # SPL-2 extraction requests
 _EXTRACTION_ASKS = [
@@ -46,19 +58,34 @@ def analyze(state: SlspectorState) -> list[Finding]:
     for pat, name in _SYS_PROMPT_MARKS:
         for m in re.finditer(pat, text, re.IGNORECASE | re.MULTILINE):
             mark_hits += 1
-            findings.append(make_finding(
-                taxonomy_id="B-C-1", pattern_id="SPL-1", confidence=0.55,
-                message=f"System-prompt component: {name}", state=state,
-                pos=m.start(), matched_text=m.group(0), needs_review=True))
+            findings.append(
+                make_finding(
+                    taxonomy_id="B-C-1",
+                    pattern_id="SPL-1",
+                    confidence=0.55,
+                    message=f"System-prompt component: {name}",
+                    state=state,
+                    pos=m.start(),
+                    matched_text=m.group(0),
+                    needs_review=True,
+                )
+            )
 
     for pat in _EXTRACTION_ASKS:
         for m in re.finditer(pat, text, re.IGNORECASE):
             # extraction request + multiple system-prompt components -> more likely a real leak
             conf = 0.75 if mark_hits >= 2 else 0.55
-            findings.append(make_finding(
-                taxonomy_id="B-C-1", pattern_id="SPL-2", confidence=conf,
-                message="System-prompt extraction request", state=state,
-                pos=m.start(), matched_text=m.group(0)))
+            findings.append(
+                make_finding(
+                    taxonomy_id="B-C-1",
+                    pattern_id="SPL-2",
+                    confidence=conf,
+                    message="System-prompt extraction request",
+                    state=state,
+                    pos=m.start(),
+                    matched_text=m.group(0),
+                )
+            )
 
     return findings
 

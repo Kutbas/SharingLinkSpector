@@ -10,20 +10,37 @@ from __future__ import annotations
 
 import re
 import zlib
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 # --- link extraction ---
 _MD_LINK = re.compile(r"\[([^\]]*)\]\((https?://[^\s)]+|www\.[^\s)]+)\)")
-_HTML_LINK = re.compile(r'<a\s[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', re.IGNORECASE | re.DOTALL)
+_HTML_LINK = re.compile(
+    r'<a\s[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', re.IGNORECASE | re.DOTALL
+)
 _RAW_URL = re.compile(r"(?<![\"'\(\[])(https?://[^\s<>\"'\)\]]+|www\.[^\s<>\"'\)]+)")
 _IMG_TAG = re.compile(
-    r'<(img|source|iframe|link|script|video|audio)\b[^>]*'
-    r'(?:src|href)=["\']([^"\']+)["\']', re.IGNORECASE)
+    r"<(img|source|iframe|link|script|video|audio)\b[^>]*"
+    r'(?:src|href)=["\']([^"\']+)["\']',
+    re.IGNORECASE,
+)
 _MD_IMG = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
 
 _KNOWN_RESOURCE_EXT = (
-    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".css", ".woff",
-    ".woff2", ".ttf", ".eot", ".ico", ".mp4", ".mp3", ".pdf",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".svg",
+    ".css",
+    ".woff",
+    ".woff2",
+    ".ttf",
+    ".eot",
+    ".ico",
+    ".mp4",
+    ".mp3",
+    ".pdf",
 )
 
 
@@ -83,7 +100,21 @@ def extract_links(full_text: str) -> list[dict]:
 
     def _add(url: str, anchor: str, kind: str, pos: int):
         url = url.strip().rstrip(".,;:!?）)】」\"'")
-        if not url or url in seen:
+        parsed = urlparse(url if "://" in url else f"https://{url}")
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            return
+        host = parsed.hostname.lower()
+        try:
+            port = parsed.port
+        except ValueError:
+            return
+        netloc = (
+            host if port in (None, 80 if parsed.scheme == "http" else 443) else f"{host}:{port}"
+        )
+        url = urlunparse(
+            (parsed.scheme.lower(), netloc, parsed.path or "", parsed.params, parsed.query, "")
+        )
+        if url in seen:
             return
         seen.add(url)
         links.append({"url": url, "anchor": anchor.strip()[:120], "kind": kind, "pos": pos})
@@ -111,7 +142,8 @@ def extract_attachments(record: dict) -> list[dict]:
                 out.append(
                     {
                         "file_name": a.get("file_name") or a.get("fileName"),
-                        "file_type": a.get("file_type") or a.get("mime_type")
+                        "file_type": a.get("file_type")
+                        or a.get("mime_type")
                         or a.get("fileMimeType"),
                         "uri": a.get("file_uri") or a.get("fileUri") or a.get("url"),
                     }
@@ -147,8 +179,6 @@ def text_stats(full_text: str) -> dict[str, object]:
 
 
 def domain_of(url: str) -> str:
-    try:
-        netloc = urlparse(url if "://" in url else f"https://{url}").netloc.lower()
-        return netloc.split("@")[-1].split(":")[0]
-    except Exception:
-        return ""
+    """Return a normalized HTTP(S) hostname, or an empty string for invalid URLs."""
+    parsed = urlparse(url if "://" in url else f"https://{url}")
+    return (parsed.hostname or "").lower() if parsed.scheme in {"http", "https"} else ""

@@ -43,8 +43,9 @@ class _FakeClient:
 
 
 def _cfg():
-    return ProviderConfig(name="mock", base_url="http://mock", api_key="k",
-                          model="mock-model", concurrency=1)
+    return ProviderConfig(
+        name="mock", base_url="http://mock", api_key="k", model="mock-model", concurrency=1
+    )
 
 
 def test_llm_hit_produces_finding(static_graph, monkeypatch):
@@ -53,19 +54,29 @@ def test_llm_hit_produces_finding(static_graph, monkeypatch):
     # 选一个静态不会先命中的文本（无银行卡/敏感词表命中）——LLM 轨才会跑 A-C-2
     record = make_record(("USER", "体检报告显示我的 HDL 偏低，医生建议调整生活方式"))
     state = static_graph.invoke(
-        {"record": record, "use_llm": True, "provider": "mock",
-         "findings": []}
+        {"record": record, "use_llm": True, "provider": "mock", "findings": []}
     )
-    hit_reply = json.dumps({
-        "hit": True, "confidence": 0.9,
-        "evidence": "体检报告显示 HDL 偏低",
-        "reasoning": "Health details self-disclosed by the user",
-    }, ensure_ascii=False)
-    miss_reply = json.dumps({
-        "hit": False, "confidence": 0.1, "evidence": "", "reasoning": "无相关迹象",
-    }, ensure_ascii=False)
+    hit_reply = json.dumps(
+        {
+            "hit": True,
+            "confidence": 0.9,
+            "evidence": "体检报告显示 HDL 偏低",
+            "reasoning": "Health details self-disclosed by the user",
+        },
+        ensure_ascii=False,
+    )
+    miss_reply = json.dumps(
+        {
+            "hit": False,
+            "confidence": 0.1,
+            "evidence": "",
+            "reasoning": "无相关迹象",
+        },
+        ensure_ascii=False,
+    )
     fake = _FakeClient(
-        hit_reply, miss_reply,
+        hit_reply,
+        miss_reply,
         predicate=lambda prompt: "Sensitive privacy disclosure" in prompt,
     )
     monkeypatch.setattr(llm_analyzer, "make_client", lambda cfg: fake)
@@ -101,7 +112,7 @@ def test_llm_retry_on_bad_json(static_graph, monkeypatch):
     fake = _BadThenGood()
     monkeypatch.setattr(llm_analyzer, "make_client", lambda cfg: fake)
     monkeypatch.setattr(llm_analyzer.time, "sleep", lambda s: None)
-    findings, statuses = llm_analyzer.analyze(state, _cfg())
+    _findings, statuses = llm_analyzer.analyze(state, _cfg())
     errs = [s for s in statuses if s.get("status") == "error"]
     assert not errs, errs
     assert fake.n >= 2, "bad JSON should trigger retry"
@@ -123,7 +134,9 @@ def test_ollama_preset(monkeypatch):
     monkeypatch.setenv("OLLAMA_API_KEY", "ollama")
     monkeypatch.setenv("OLLAMA_MODEL", "qwen3:32b")
     cfg = resolve_provider("ollama")
-    assert cfg is not None and cfg.base_url.startswith("http://gpu-box") and cfg.model == "qwen3:32b"
+    assert (
+        cfg is not None and cfg.base_url.startswith("http://gpu-box") and cfg.model == "qwen3:32b"
+    )
 
 
 def test_llm_multichunk_merge_and_corroboration(static_graph, monkeypatch):
@@ -135,17 +148,28 @@ def test_llm_multichunk_merge_and_corroboration(static_graph, monkeypatch):
     record = make_record(("USER", long_convo))
     state = static_graph.invoke({"record": record, "use_llm": True, "provider": "mock"})
 
-    hit_reply = json.dumps({
-        "hit": True, "confidence": 0.6,
-        "evidence": "filler paragraph 3 yyy",
-        "reasoning": "Seen in multiple chunks",
-    }, ensure_ascii=False)
-    miss_reply = json.dumps({
-        "hit": False, "confidence": 0.1, "evidence": "", "reasoning": "none",
-    }, ensure_ascii=False)
+    hit_reply = json.dumps(
+        {
+            "hit": True,
+            "confidence": 0.6,
+            "evidence": "filler paragraph 3 yyy",
+            "reasoning": "Seen in multiple chunks",
+        },
+        ensure_ascii=False,
+    )
+    miss_reply = json.dumps(
+        {
+            "hit": False,
+            "confidence": 0.1,
+            "evidence": "",
+            "reasoning": "none",
+        },
+        ensure_ascii=False,
+    )
     # hit only for "Cross-session persistent memory poisoning" (B-CI-8), all else miss
     fake = _FakeClient(
-        hit_reply, miss_reply,
+        hit_reply,
+        miss_reply,
         predicate=lambda prompt: "Cross-session persistent memory poisoning" in prompt,
     )
     monkeypatch.setattr(llm_analyzer, "make_client", lambda cfg: fake)

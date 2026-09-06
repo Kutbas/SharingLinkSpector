@@ -17,7 +17,7 @@ def meta_analyzer(state: SlspectorState) -> dict:
         by_cat[f.taxonomy_id].append(f)
 
     # dual-track co-occurrence: static + llm both hit -> confidence boost (x1.25, cap 0.98)
-    for cid, group in by_cat.items():
+    for group in by_cat.values():
         detectors = {f.detector for f in group}
         if detectors == {"static", "llm"}:
             for f in group:

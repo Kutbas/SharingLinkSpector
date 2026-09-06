@@ -18,24 +18,24 @@ class RecordMeta(TypedDict):
 
 class AnalyzerStatus(TypedDict, total=False):
     analyzer_id: str
-    status: str          # ok / skipped / error
+    status: str  # ok / skipped / error
     detail: str
     duration_ms: int
 
 
 class SlspectorState(TypedDict, total=False):
     # input
-    record: dict[str, object]              # raw JSONL record
+    record: dict[str, object]  # raw JSONL record
     meta: RecordMeta
     use_llm: bool
     provider: str | None
     # build_context products
-    messages: list[dict]                    # normalized messages (for chunking)
-    full_text: str                          # "\n\n".join(messages)
+    messages: list[dict]  # normalized messages (for chunking)
+    full_text: str  # "\n\n".join(messages)
     message_offsets: list[tuple[int, int, str]]  # (start, end, role) per message
-    links: list[dict[str, object]]          # extracted links/resource refs (url/anchor/kind)
-    attachments: list[dict[str, object]]    # normalized attachment_info
-    text_stats: dict[str, object]           # length/compression/repetition stats
+    links: list[dict[str, object]]  # extracted links/resource refs (url/anchor/kind)
+    attachments: list[dict[str, object]]  # normalized attachment_info
+    text_stats: dict[str, object]  # length/compression/repetition stats
     # parallel analyzer accumulation
     findings: Annotated[list[Finding], operator.add]
     analyzer_status: Annotated[list[AnalyzerStatus], operator.add]

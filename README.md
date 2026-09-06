@@ -25,7 +25,7 @@ Detection is driven by a 49-category taxonomy of sharing-link risks
   (NIST SP 800-122, MITRE ATT&CK / CAPEC, CWE, OWASP), not invented ad hoc.
 - Per category: tracks (static / llm / dynamic / metadata / platform),
   status, definitions, detection guidance, and English judging prompts.
-- 31 categories have deterministic static detection; 40 have LLM judging
+- 45 categories include a static track; 40 have LLM judging
   prompts; the remainder require dynamic, multimodal, or platform-side
   capabilities and are explicitly documented as such (see Coverage).
 
@@ -84,6 +84,14 @@ Tuning knobs (env): `SLSPECTOR_LLM_CONCURRENCY` (default 4),
 level for models that always reason; pass `low` where supported),
 `SLSPECTOR_LLM_CHUNK_CHARS` (24000), `SLSPECTOR_LLM_CHUNK_OVERLAP` (800).
 Set `HTTPS_PROXY` if egress requires a proxy.
+
+## Batch reliability
+
+`scan` writes durable JSONL output and `checkpoint.json`. Resume an interrupted scan with
+`--resume -o out/`; do not modify the input JSONL before resuming. `needs_review.jsonl`
+uses **finding-level** rows (`share_id`, `platform`, `finding`), while `findings.jsonl`
+uses record-level rows. Input limits are configurable with `--max-record-chars`,
+`--max-messages`, and `--max-links`. Exit codes: `0` complete, `2` partial, `1` failed.
 
 ## Output
 

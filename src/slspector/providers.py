@@ -19,7 +19,7 @@ try:  # minimal .env parsing (no python-dotenv dependency)
             if _line and not _line.startswith("#") and "=" in _line:
                 _k, _, _v = _line.partition("=")
                 os.environ.setdefault(_k.strip(), _v.strip())
-except Exception:  # noqa: BLE001
+except OSError:
     pass
 
 
@@ -55,8 +55,9 @@ _PRESETS = {
 }
 
 
-def resolve_provider(name: str | None = None,
-                     model_override: str | None = None) -> ProviderConfig | None:
+def resolve_provider(
+    name: str | None = None, model_override: str | None = None
+) -> ProviderConfig | None:
     """Resolve provider config; returns None when unset/keyless (static-only mode)."""
     pname = (name or os.environ.get("SLSPECTOR_PROVIDER") or "").strip().lower()
     if pname in ("", "none"):

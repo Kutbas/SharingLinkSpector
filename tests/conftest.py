@@ -33,7 +33,11 @@ def scan(graph, record: dict) -> list[dict]:
 
 @pytest.fixture(scope="session")
 def subset_first_record() -> dict:
-    p = Path(__file__).resolve().parent.parent.parent / "Taxonomy_Building" / "taxonomy_subset_650.jsonl"
+    p = (
+        Path(__file__).resolve().parent.parent.parent
+        / "Taxonomy_Building"
+        / "taxonomy_subset_650.jsonl"
+    )
     if not p.exists():
         pytest.skip("subset not available")
     with p.open(encoding="utf-8") as f:

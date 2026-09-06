@@ -17,15 +17,52 @@ ANALYZER_ID = "static_supply_chain"
 
 # frequent official packages (py/npm ecosystems, offline list; registry API in Phase 2)
 _PY_OFFICIAL = {
-    "requests", "numpy", "pandas", "flask", "django", "fastapi", "httpx", "aiohttp",
-    "sqlalchemy", "pydantic", "openai", "anthropic", "langchain", "langgraph",
-    "beautifulsoup4", "scrapy", "selenium", "pytest", "cryptography", "jwt",
-    "pillow", "opencv-python", "torch", "tensorflow", "transformers", "openpyxl",
+    "requests",
+    "numpy",
+    "pandas",
+    "flask",
+    "django",
+    "fastapi",
+    "httpx",
+    "aiohttp",
+    "sqlalchemy",
+    "pydantic",
+    "openai",
+    "anthropic",
+    "langchain",
+    "langgraph",
+    "beautifulsoup4",
+    "scrapy",
+    "selenium",
+    "pytest",
+    "cryptography",
+    "jwt",
+    "pillow",
+    "opencv-python",
+    "torch",
+    "tensorflow",
+    "transformers",
+    "openpyxl",
 }
 _NPM_OFFICIAL = {
-    "react", "vue", "axios", "express", "lodash", "typescript", "webpack",
-    "vite", "next", "eslint", "jest", "chalk", "commander", "openai",
-    "@anthropic-ai/sdk", "discord.js", "telegraf", "ws",
+    "react",
+    "vue",
+    "axios",
+    "express",
+    "lodash",
+    "typescript",
+    "webpack",
+    "vite",
+    "next",
+    "eslint",
+    "jest",
+    "chalk",
+    "commander",
+    "openai",
+    "@anthropic-ai/sdk",
+    "discord.js",
+    "telegraf",
+    "ws",
 }
 _OFFICIAL_ALL = _PY_OFFICIAL | _NPM_OFFICIAL
 
@@ -66,7 +103,11 @@ def _edit_distance_within(a: str, b: str, max_d: int) -> bool:
 def _nearest_official(pkg: str) -> tuple[str | None, int]:
     best, best_d = None, 3
     for off in _OFFICIAL_ALL:
-        d = 1 if _edit_distance_within(pkg, off, 1) else (2 if _edit_distance_within(pkg, off, 2) else 3)
+        d = (
+            1
+            if _edit_distance_within(pkg, off, 1)
+            else (2 if _edit_distance_within(pkg, off, 2) else 3)
+        )
         if d < best_d:
             best, best_d = off, d
     return best, best_d
@@ -91,23 +132,37 @@ def analyze(state: SlspectorState) -> list[Finding]:
             near, dist = _nearest_official(pkg_name)
             if near and dist <= 2:
                 has_se = bool(se_hits)
-                findings.append(make_finding(
-                    taxonomy_id="B-CIA-9", pattern_id="SC-1",
-                    confidence=0.7 if has_se else 0.55,
-                    message=f"Suspected typosquat package: {pkg_name} (near {near}, edit distance {dist})"
-                            + ("; with social-engineering wording" if has_se else ""),
-                    state=state, pos=m.start(), matched_text=m.group(0)[:80],
-                    needs_review=not has_se,
-                    evidence={"pkg": pkg_name, "nearest_official": near, "distance": dist}))
+                findings.append(
+                    make_finding(
+                        taxonomy_id="B-CIA-9",
+                        pattern_id="SC-1",
+                        confidence=0.7 if has_se else 0.55,
+                        message=f"Suspected typosquat package: {pkg_name} (near {near}, edit distance {dist})"
+                        + ("; with social-engineering wording" if has_se else ""),
+                        state=state,
+                        pos=m.start(),
+                        matched_text=m.group(0)[:80],
+                        needs_review=not has_se,
+                        evidence={"pkg": pkg_name, "nearest_official": near, "distance": dist},
+                    )
+                )
 
     # SC-2: SE wording + any install command co-occurrence (fallback candidate without typosquat)
     if len(se_hits) >= 2 and _INSTALL_CTX.search(text):
         first = _INSTALL_CTX.search(text)
-        findings.append(make_finding(
-            taxonomy_id="B-CIA-9", pattern_id="SC-2", confidence=0.45,
-            message=f"Install command co-occurring with social-engineering wording (x{len(se_hits)}, candidate)",
-            state=state, pos=first.start(), matched_text=first.group(0),
-            needs_review=True, evidence={"se_count": len(se_hits)}))
+        findings.append(
+            make_finding(
+                taxonomy_id="B-CIA-9",
+                pattern_id="SC-2",
+                confidence=0.45,
+                message=f"Install command co-occurring with social-engineering wording (x{len(se_hits)}, candidate)",
+                state=state,
+                pos=first.start(),
+                matched_text=first.group(0),
+                needs_review=True,
+                evidence={"se_count": len(se_hits)},
+            )
+        )
 
     return findings
 

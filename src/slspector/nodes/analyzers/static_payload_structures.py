@@ -29,7 +29,10 @@ _XXE_MARKS = [
 # PS-2 B-CIA-3 stored-XSS executable structures
 _XSS_MARKS = [
     (r"<script\b[^>]*>", "script tag"),
-    (r"(?i)\bon(?:error|load|click|mouseover|focus|animationstart|toggle)\s*=\s*[\"'`]?[^\"'`>\s]", "event-handler attribute"),
+    (
+        r"(?i)\bon(?:error|load|click|mouseover|focus|animationstart|toggle)\s*=\s*[\"'`]?[^\"'`>\s]",
+        "event-handler attribute",
+    ),
     (r"(?i)javascript:\s*[a-z(]", "javascript: URI"),
     (r"(?i)<svg\b[^>]*\bon\w+\s*=", "SVG event attribute"),
     (r"(?i)<img[^>]+src\s*=\s*[\"']?\s*x:", "x: img src"),
@@ -83,53 +86,104 @@ def analyze(state: SlspectorState) -> list[Finding]:
     # note: share-page renderers do not skip code blocks, so we report them (context kept in evidence)
     for pat, name in _XXE_MARKS:
         for m in re.finditer(pat, text, re.IGNORECASE):
-            findings.append(make_finding(
-                taxonomy_id="B-C-5", pattern_id="PS-1", confidence=0.7,
-                message=f"XXE structure signal: {name}", state=state,
-                pos=m.start(), matched_text=m.group(0)[:120]))
+            findings.append(
+                make_finding(
+                    taxonomy_id="B-C-5",
+                    pattern_id="PS-1",
+                    confidence=0.7,
+                    message=f"XXE structure signal: {name}",
+                    state=state,
+                    pos=m.start(),
+                    matched_text=m.group(0)[:120],
+                )
+            )
 
     for pat, name in _XSS_MARKS:
         for m in re.finditer(pat, text, re.IGNORECASE):
-            findings.append(make_finding(
-                taxonomy_id="B-CIA-3", pattern_id="PS-2", confidence=0.75,
-                message=f"Executable structure: {name}", state=state,
-                pos=m.start(), matched_text=m.group(0)[:120]))
+            findings.append(
+                make_finding(
+                    taxonomy_id="B-CIA-3",
+                    pattern_id="PS-2",
+                    confidence=0.75,
+                    message=f"Executable structure: {name}",
+                    state=state,
+                    pos=m.start(),
+                    matched_text=m.group(0)[:120],
+                )
+            )
 
     # B-CIA-4: unambiguous formula functions hit directly; prefix variants need table context
     for m in _FORMULA_FUNC.finditer(text):
-        findings.append(make_finding(
-            taxonomy_id="B-CIA-4", pattern_id="PS-3", confidence=0.8,
-            message=f"Spreadsheet formula function: {m.group(1)}", state=state,
-            pos=m.start(), matched_text=m.group(0)[:100]))
+        findings.append(
+            make_finding(
+                taxonomy_id="B-CIA-4",
+                pattern_id="PS-3",
+                confidence=0.8,
+                message=f"Spreadsheet formula function: {m.group(1)}",
+                state=state,
+                pos=m.start(),
+                matched_text=m.group(0)[:100],
+            )
+        )
     for m in _FORMULA_AMBIGUOUS.finditer(text, re.IGNORECASE):
         if _TABLE_CONTEXT.search(text[max(0, m.start() - 200) : m.start() + 200]):
-            findings.append(make_finding(
-                taxonomy_id="B-CIA-4", pattern_id="PS-3", confidence=0.6,
-                message=f"Suspected spreadsheet formula function: {m.group(1)}", state=state,
-                pos=m.start(), matched_text=m.group(0)[:100], needs_review=True))
+            findings.append(
+                make_finding(
+                    taxonomy_id="B-CIA-4",
+                    pattern_id="PS-3",
+                    confidence=0.6,
+                    message=f"Suspected spreadsheet formula function: {m.group(1)}",
+                    state=state,
+                    pos=m.start(),
+                    matched_text=m.group(0)[:100],
+                    needs_review=True,
+                )
+            )
     for m in _FORMULA_CELL.finditer(text):
         if _TABLE_CONTEXT.search(text[max(0, m.start() - 200) : m.start() + 200]):
-            findings.append(make_finding(
-                taxonomy_id="B-CIA-4", pattern_id="PS-3", confidence=0.5,
-                message="Table-cell formula prefix (=+-@ variants)", state=state,
-                pos=m.start(), matched_text=m.group(0)[:80], needs_review=True))
+            findings.append(
+                make_finding(
+                    taxonomy_id="B-CIA-4",
+                    pattern_id="PS-3",
+                    confidence=0.5,
+                    message="Table-cell formula prefix (=+-@ variants)",
+                    state=state,
+                    pos=m.start(),
+                    matched_text=m.group(0)[:80],
+                    needs_review=True,
+                )
+            )
 
     for pat, name in _ANSI_MARKS:
         for m in re.finditer(pat, text):
-            findings.append(make_finding(
-                taxonomy_id="B-CIA-5", pattern_id="PS-4", confidence=0.85,
-                message=f"Terminal escape sequence: {name}", state=state,
-                pos=m.start(), matched_text=m.group(0)[:60].replace("\x1b", "\\e")))
+            findings.append(
+                make_finding(
+                    taxonomy_id="B-CIA-5",
+                    pattern_id="PS-4",
+                    confidence=0.85,
+                    message=f"Terminal escape sequence: {name}",
+                    state=state,
+                    pos=m.start(),
+                    matched_text=m.group(0)[:60].replace("\x1b", "\\e"),
+                )
+            )
 
     for pat, name in _SSTI_MARKS:
         for m in re.finditer(pat, text):
             dangerous = bool(_SSTI_DANGER.search(m.group(0)))
-            findings.append(make_finding(
-                taxonomy_id="B-CIA-6", pattern_id="PS-5",
-                confidence=0.55 if dangerous else 0.35,
-                message=f"Template meta-syntax: {name}" + (" (dangerous symbols)" if dangerous else " (candidate, manual review)"),
-                state=state, pos=m.start(), matched_text=m.group(0)[:100],
-                needs_review=True))
+            findings.append(
+                make_finding(
+                    taxonomy_id="B-CIA-6",
+                    pattern_id="PS-5",
+                    confidence=0.55 if dangerous else 0.35,
+                    message=f"Template meta-syntax: {name}"
+                    + (" (dangerous symbols)" if dangerous else " (candidate, manual review)"),
+                    state=state,
+                    pos=m.start(),
+                    matched_text=m.group(0)[:100],
+                    needs_review=True,
+                )
+            )
 
     return findings
 

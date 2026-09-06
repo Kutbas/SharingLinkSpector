@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from itertools import pairwise
 
 from slspector.conversation import domain_of
 from slspector.models import Finding
@@ -19,9 +20,20 @@ from slspector.state import AnalyzerNodeResponse, SlspectorState
 ANALYZER_ID = "static_seo_abuse"
 
 _PLATFORM_OWN = (
-    "chatgpt.com", "openai.com", "claude.ai", "anthropic.com", "gemini.google.com",
-    "grok.com", "deepseek.com", "kimi.com", "chat.qwen.ai", "perplexity.ai",
-    "poe.com", "aistudio.google.com", "meta.ai", "copilot.microsoft.com",
+    "chatgpt.com",
+    "openai.com",
+    "claude.ai",
+    "anthropic.com",
+    "gemini.google.com",
+    "grok.com",
+    "deepseek.com",
+    "kimi.com",
+    "chat.qwen.ai",
+    "perplexity.ai",
+    "poe.com",
+    "aistudio.google.com",
+    "meta.ai",
+    "copilot.microsoft.com",
 )
 
 # authority-impersonation frequent words (B-I-2)
@@ -52,31 +64,52 @@ def analyze(state: SlspectorState) -> list[Finding]:
     # SEO-1 keyword stuffing: anomalous 2-gram frequency
     words = re.findall(r"[\w\u4e00-\u9fff]{2,}", text.lower())
     if len(words) > 100:
-        bigrams = Counter(zip(words, words[1:]))
+        bigrams = Counter(pairwise(words))
         top_bigram, top_n = bigrams.most_common(1)[0]
         density = top_n / len(words)
         if density > 0.02 and top_n > 30:  # one bigram > 2% of all words
             tax = "B-I-2"
-            findings.append(make_record_finding(
-                taxonomy_id=tax, pattern_id="SEO-1", confidence=0.5,
-                message=f"Keyword stuffing ('{top_bigram[0]} {top_bigram[1]}' x{top_n}, density {density:.1%})",
-                needs_review=True,
-                evidence={"bigram": " ".join(top_bigram), "count": top_n, "density": round(density, 4)}))
+            findings.append(
+                make_record_finding(
+                    taxonomy_id=tax,
+                    pattern_id="SEO-1",
+                    confidence=0.5,
+                    message=f"Keyword stuffing ('{top_bigram[0]} {top_bigram[1]}' x{top_n}, density {density:.1%})",
+                    needs_review=True,
+                    evidence={
+                        "bigram": " ".join(top_bigram),
+                        "count": top_n,
+                        "density": round(density, 4),
+                    },
+                )
+            )
 
     # SEO-2 fake citations
     cites = _FAKE_CITES.findall(text)
     has_ref_list = bool(_CITE_LIST.search(text))
     if len(cites) >= 5 and not has_ref_list:
-        findings.append(make_record_finding(
-            taxonomy_id="B-I-2", pattern_id="SEO-2", confidence=0.5,
-            message=f"Citation markers x{len(cites)} without a reference list (candidate)",
-            needs_review=True, evidence={"cite_marks": len(cites)}))
+        findings.append(
+            make_record_finding(
+                taxonomy_id="B-I-2",
+                pattern_id="SEO-2",
+                confidence=0.5,
+                message=f"Citation markers x{len(cites)} without a reference list (candidate)",
+                needs_review=True,
+                evidence={"cite_marks": len(cites)},
+            )
+        )
     auth = _AUTHORITY_CLAIMS.findall(text)
     if len(auth) >= 3:
-        findings.append(make_record_finding(
-            taxonomy_id="B-I-2", pattern_id="SEO-2", confidence=0.45,
-            message=f"Dense authority-impersonation wording (x{len(auth)}, candidate; LLM re-check in Phase 2)",
-            needs_review=True, evidence={"count": len(auth)}))
+        findings.append(
+            make_record_finding(
+                taxonomy_id="B-I-2",
+                pattern_id="SEO-2",
+                confidence=0.45,
+                message=f"Dense authority-impersonation wording (x{len(auth)}, candidate; LLM re-check in Phase 2)",
+                needs_review=True,
+                evidence={"count": len(auth)},
+            )
+        )
 
     # SEO-3 promo density
     promo = _PROMO_WORDS.findall(text)
@@ -87,21 +120,35 @@ def analyze(state: SlspectorState) -> list[Finding]:
             ext_links.append(l)
     promo_density = len(promo) * 100 / (n_chars / 1000)  # promo words per 1k chars
     if len(promo) >= 3 and (promo_density > 1.0 or len(ext_links) >= 5):
-        findings.append(make_record_finding(
-            taxonomy_id="B-I-3", pattern_id="SEO-3", confidence=0.55,
-            message=f"Promo wording x{len(promo)} co-occurring with external links x{len(ext_links)} (candidate)",
-            needs_review=True,
-            evidence={"promo_words": len(promo), "ext_links": len(ext_links),
-                      "per_1k_chars": round(promo_density, 2)}))
+        findings.append(
+            make_record_finding(
+                taxonomy_id="B-I-3",
+                pattern_id="SEO-3",
+                confidence=0.55,
+                message=f"Promo wording x{len(promo)} co-occurring with external links x{len(ext_links)} (candidate)",
+                needs_review=True,
+                evidence={
+                    "promo_words": len(promo),
+                    "ext_links": len(ext_links),
+                    "per_1k_chars": round(promo_density, 2),
+                },
+            )
+        )
     # anchor farm: one domain referenced at high frequency
     if ext_links:
         dom_counts = Counter(domain_of(l["url"]) for l in ext_links)
         top_dom, top_n = dom_counts.most_common(1)[0]
         if top_n >= 8:
-            findings.append(make_record_finding(
-                taxonomy_id="B-I-3", pattern_id="SEO-3", confidence=0.5,
-                message=f"High-frequency external links to one domain ({top_dom} x{top_n}, candidate)",
-                needs_review=True, evidence={"domain": top_dom, "count": top_n}))
+            findings.append(
+                make_record_finding(
+                    taxonomy_id="B-I-3",
+                    pattern_id="SEO-3",
+                    confidence=0.5,
+                    message=f"High-frequency external links to one domain ({top_dom} x{top_n}, candidate)",
+                    needs_review=True,
+                    evidence={"domain": top_dom, "count": top_n},
+                )
+            )
 
     return findings
 
